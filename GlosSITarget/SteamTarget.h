@@ -35,9 +35,13 @@ limitations under the License.
 
 #include "../common/steam_util.h"
 
+#ifdef _WIN32
+class TrayIcon;
+#else
 namespace Tray {
 class Tray;
 }
+#endif
 class SteamTarget {
   public:
     explicit SteamTarget();
@@ -69,7 +73,11 @@ class SteamTarget {
     static inline HWND last_real_hwnd_ = nullptr;
 #endif
 
+#ifdef _WIN32
+    std::unique_ptr<TrayIcon> createTrayIcon();
+#else
     std::unique_ptr<Tray::Tray> createTrayMenu();
+#endif
 
     /*
      * Run once per frame

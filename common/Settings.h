@@ -89,6 +89,7 @@ namespace Settings
     } common;
 
     inline const std::map<std::wstring, std::function<void()>> cmd_args = {
+        // UWP overlay enabler (explorer.exe injection) was removed; flag kept so existing shortcuts still parse
         {L"-disableuwpoverlay", [&]()
          { common.no_uwp_overlay = true; }},
         {L"-disablewatchdog", [&]()

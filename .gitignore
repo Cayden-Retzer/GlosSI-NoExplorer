@@ -372,3 +372,6 @@ FodyWeavers.xsd
 .visuallint
 GlosSIConfig/steamgrid_api_keys.h
 steamgrid.zip
+
+# explorer-independent build output
+dist-no-explorer/

@@ -22,7 +22,10 @@ limitations under the License.
 #include <spdlog/spdlog.h>
 
 #ifdef _WIN32
-#include "UWPOverlayEnabler.h"
+#include <shellapi.h> // ExtractIconExW (WIN32_LEAN_AND_MEAN excludes it)
+#include "TrayIcon.h"
+#include "WatchdogLauncher.h"
+#else
 #include <tray.hpp>
 #endif
 
@@ -178,8 +181,13 @@ int SteamTarget::run()
         can_fully_initialize_ = false;
     }
     
+#ifdef _WIN32
+    // Does not require explorer.exe: icon appears whenever a taskbar exists.
+    auto tray = createTrayIcon();
+#else
     const auto tray = createTrayMenu();
-    
+#endif
+
     bool delayed_full_init_1_frame = false;
     sf::Clock frame_time_clock;
 
@@ -196,6 +204,11 @@ int SteamTarget::run()
         detector_.update();
         overlayHotkeyWorkaround();
         window_.update();
+#ifdef _WIN32
+        if (tray) {
+            tray->update();
+        }
+#endif
 
         if (cef_tweaks_enabled_ && fully_initialized_) {
             steam_tweaks_.update(frame_time_clock.getElapsedTime().asSeconds());
@@ -218,7 +231,11 @@ int SteamTarget::run()
         end_frame_callbacks.clear();
         frame_time_clock.restart();
     }
+#ifdef _WIN32
+    tray.reset();
+#else
     tray->exit();
+#endif
 
     server_.stop();
     if (fully_initialized_) {
@@ -396,21 +413,17 @@ Application will not function!");
     }
 
 #ifdef WIN32
+    // The watchdog used to be a DLL injected into explorer.exe.
+    // It is now a standalone process, started so that it outlives GlosSITarget.
     if (!Settings::common.disable_watchdog) {
-        wchar_t buff[MAX_PATH];
-        GetModuleFileName(GetModuleHandle(NULL), buff, MAX_PATH);
-        std::wstring watchDogPath(buff);
-        watchDogPath = watchDogPath.substr(0, 1 + watchDogPath.find_last_of(L'\\')) + L"GlosSIWatchdog.dll";
-
-        DllInjector::injectDllInto(watchDogPath, L"explorer.exe");
-    }
-
-    if (Settings::common.no_uwp_overlay) {
-        UWPOverlayEnabler::AddUwpOverlayOvWidget();
+        WatchdogLauncher::Launch();
     }
     else {
-        UWPOverlayEnabler::EnableUwpOverlay();
+        spdlog::info("Watchdog disabled via -disablewatchdog");
     }
+
+    // The UWP overlay enabler (another DLL injected into explorer.exe) was removed.
+    // "-disableuwpoverlay" is still accepted but has no effect anymore.
 
     hidhide_.hideDevices(steam_path_);
     input_redirector_.run();
@@ -483,33 +496,31 @@ HWND SteamTarget::keepFgWindowHookFn()
 }
 #endif
 
+#ifdef _WIN32
+std::unique_ptr<TrayIcon> SteamTarget::createTrayIcon()
+{
+    wchar_t path[MAX_PATH];
+    GetModuleFileNameW(nullptr, path, MAX_PATH);
+    HICON icon = nullptr;
+    ExtractIconExW(path, 0, nullptr, &icon, 1); // small icon from our own .exe
+    if (icon == nullptr) {
+        ExtractIconExW(path, 0, &icon, nullptr, 1);
+    }
+    return std::make_unique<TrayIcon>(L"GlosSITarget", icon, [this]() {
+        run_ = false;
+    });
+}
+#else
 std::unique_ptr<Tray::Tray> SteamTarget::createTrayMenu()
 {
-#ifdef _WIN32
-    HICON icon = 0;
-    TCHAR path[MAX_PATH];
-    GetModuleFileName(nullptr, path, MAX_PATH);
-    icon = (HICON)LoadImage(
-        0,
-        path,
-        IMAGE_ICON,
-        GetSystemMetrics(SM_CXSMICON),
-        GetSystemMetrics(SM_CYSMICON),
-        LR_LOADFROMFILE | LR_LOADMAP3DCOLORS);
-    if (!icon) {
-        ExtractIconEx(path, 0, &icon, nullptr, 1);
-    }
-    auto tray = std::make_unique<Tray::Tray>("GlosSITarget", icon);
-#else
     auto tray = std::make_unique<Tray::Tray>("GlosSITarget", "ico.png");
-#endif
-
     tray->addEntry(Tray::Button{
-        "Quit", [this, &tray]() {
+        "Quit", [this]() {
             run_ = false;
         }});
     return tray;
 }
+#endif
 
 void SteamTarget::overlayHotkeyWorkaround()
 {

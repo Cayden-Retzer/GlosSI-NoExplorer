@@ -9,7 +9,7 @@
 	url = https://github.com/gabime/spdlog
 [submodule "deps/subhook"]
 	path = deps/subhook
-	url = https://github.com/Zeex/subhook
+	url = https://github.com/tianocore/edk2-subhook
 [submodule "deps/ValveFileVDF"]
 	path = deps/ValveFileVDF
 	url = https://github.com/TinyTinni/ValveFileVDF

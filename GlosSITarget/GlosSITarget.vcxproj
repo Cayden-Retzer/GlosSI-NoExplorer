@@ -136,7 +136,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>hid.lib;Cfgmgr32.lib;opengl32.lib;CEFInjectLib.lib;sfml-window-d.lib;sfml-system-d.lib;sfml-graphics-d.lib;dwmapi.lib;xinput.lib;setupapi.lib;ViGEmClient.lib;Dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>hid.lib;Cfgmgr32.lib;opengl32.lib;CEFInjectLib.lib;sfml-window-d.lib;sfml-system-d.lib;sfml-graphics-d.lib;dwmapi.lib;xinput.lib;setupapi.lib;ViGEmClient.lib;Dbghelp.lib;wbemuuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
@@ -164,7 +164,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>hid.lib;Cfgmgr32.lib;opengl32.lib;CEFInjectLib.lib;sfml-window.lib;sfml-system.lib;sfml-graphics.lib;dwmapi.lib;XINPUT.lib;setupapi.lib;ViGEmClient.lib;Dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>hid.lib;Cfgmgr32.lib;opengl32.lib;CEFInjectLib.lib;sfml-window.lib;sfml-system.lib;sfml-graphics.lib;dwmapi.lib;XINPUT.lib;setupapi.lib;ViGEmClient.lib;Dbghelp.lib;wbemuuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
@@ -183,18 +183,6 @@
     <ClCompile Include="..\deps\imgui\imgui_tables.cpp" />
     <ClCompile Include="..\deps\imgui\imgui_widgets.cpp" />
     <ClCompile Include="..\deps\subhook\subhook.c" />
-    <ClCompile Include="..\deps\traypp\tray\src\components\button.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\components\imagebutton.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\components\label.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\components\separator.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\components\submenu.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\components\syncedtoggle.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\components\toggle.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\core\entry.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\core\traybase.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\core\windows\icon.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\core\windows\image.cpp" />
-    <ClCompile Include="..\deps\traypp\tray\src\core\windows\tray.cpp" />
     <ClCompile Include="AppLauncher.cpp" />
     <ClCompile Include="HttpServer.cpp" />
     <ClCompile Include="InputRedirector.cpp" />
@@ -203,6 +191,8 @@
     <ClCompile Include="SteamOverlayDetector.cpp" />
     <ClCompile Include="SteamTarget.cpp" />
     <ClCompile Include="TargetWindow.cpp" />
+    <ClCompile Include="TrayIcon.cpp" />
+    <ClCompile Include="WatchdogLauncher.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\deps\imgui-sfml\imgui-SFML.h" />
@@ -210,7 +200,6 @@
     <ClInclude Include="..\deps\subhook\subhook.h" />
     <ClInclude Include="AppLauncher.h" />
     <ClInclude Include="CommonHttpEndpoints.h" />
-    <ClInclude Include="DllInjector.h" />
     <ClInclude Include="GlosSI_logo.h" />
     <ClInclude Include="HttpServer.h" />
     <ClInclude Include="imconfig.h" />
@@ -224,7 +213,8 @@
     <ClInclude Include="SteamTarget.h" />
     <ClInclude Include="steam_sf_keymap.h" />
     <ClInclude Include="TargetWindow.h" />
-    <ClInclude Include="UWPOverlayEnabler.h" />
+    <ClInclude Include="TrayIcon.h" />
+    <ClInclude Include="WatchdogLauncher.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\deps\SFML\out\Debug\lib\Debug\sfml-graphics-d-2.dll">

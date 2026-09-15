@@ -1,0 +1,93 @@
+# GlosSI without explorer.exe
+
+This branch (`no-explorer`) removes every runtime dependency GlosSI had on
+`C:\Windows\explorer.exe`, so GlosSITarget works on a system where the desktop
+shell isn't running (and keeps working if you start/stop explorer while it runs).
+
+## What changed
+
+| Before | After |
+|---|---|
+| **Tray icon** (traypp) threw an exception when no taskbar existed, so GlosSITarget exited at startup without explorer | New `GlosSITarget/TrayIcon.*`: never fails; icon appears whenever a taskbar exists (explorer started later / restarted) |
+| **GlosSIWatchdog.dll** was injected into `explorer.exe` so it would outlive GlosSITarget | Now a standalone `GlosSIWatchdog.exe`, started via WMI (`Win32_Process.Create`) so it is neither a child of GlosSITarget nor in Steam's job object. Falls back to `CreateProcess` + job breakaway, then plain `CreateProcess` (logged) |
+| **UWPOverlayEnablerDLL.dll** was injected into `explorer.exe` | Removed (see limitations). `-disableuwpoverlay` is still accepted and does nothing |
+| `DllInjector.h` | Removed; nothing injects DLLs anymore |
+| `deps/subhook` pointed at `github.com/Zeex/subhook` (deleted) | Points at `github.com/tianocore/edk2-subhook`, which has the identical pinned commit |
+
+The watchdog now waits on GlosSITarget's process handle (`--pid`), and skips
+cleanup if a *new* GlosSITarget instance has taken over (same as the old DLL did).
+
+GlosSIConfig is unchanged and never needed explorer; keep your installed copy.
+
+## Requirements (Windows)
+
+- Git for Windows
+- Visual Studio 2022 with the **Desktop development with C++** workload
+  (includes MSVC v143, a Windows SDK and "C++ CMake tools for Windows")
+- An existing GlosSI install (for GlosSIConfig and the HidHide / ViGEmBus drivers)
+- No Qt needed
+
+## Build
+
+In **Developer PowerShell for VS 2022**:
+
+```powershell
+cd $HOME\source                       # anywhere you like
+git clone https://github.com/Alia5/GlosSI.git   # NOT --recursive (old subhook URL is dead)
+cd GlosSI
+git fetch "$HOME\Downloads\glossi-no-explorer.bundle" no-explorer:no-explorer
+git checkout no-explorer
+Set-ExecutionPolicy -Scope Process Bypass
+.\build-no-explorer.ps1
+```
+
+Output: `dist-no-explorer\` (GlosSITarget.exe, GlosSIWatchdog.exe, 3 SFML DLLs).
+Rebuild after edits with `.\build-no-explorer.ps1 -SkipDeps`.
+
+## Install
+
+In an **elevated** PowerShell, in the same folder:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install-no-explorer.ps1                      # default: C:\Program Files\GlosSI
+# .\install-no-explorer.ps1 -InstallDir 'D:\somewhere\GlosSI'
+```
+
+It backs up the replaced files into `backup-before-no-explorer-<timestamp>` inside
+the install folder and deletes the old `GlosSIWatchdog.dll` / `UWPOverlayEnablerDLL.dll`.
+Your Steam shortcuts keep working unchanged.
+
+## Verify
+
+Logs are in `%APPDATA%\GlosSI\`.
+
+1. With explorer **not** running, start a GlosSI shortcut from Steam / Big Picture.
+   `glossitarget.log` should contain
+   `TrayIcon: no taskbar (explorer.exe not running); continuing without tray icon`
+   and `Started GlosSIWatchdog via WMI (PID ...)`.
+2. Press **Stop** in Steam. `GlosSIWatchdog.log` should end with
+   `GlosSITarget (PID ...) is gone` → `Resetting HidHide state...` → `GlosSIWatchdog exiting`.
+   If it stops at `Watching GlosSITarget PID ...`, the watchdog was killed together with
+   GlosSI; check `glossitarget.log` for which launch method was used.
+3. Optional: start explorer while GlosSI runs; the tray icon should appear within ~2 s.
+
+## Troubleshooting
+
+- **GlosSITarget closes instantly after installing:** install the latest
+  VC++ 2015–2022 x64 redistributable (<https://aka.ms/vs/17/release/vc_redist.x64.exe>);
+  binaries from a current VS 2022 need a newer runtime than GlosSI's installer ships.
+- **`git submodule update` fails on subhook:** run `git submodule sync --recursive` and retry.
+- **First build fails on version info:** make sure tags exist (`git fetch --tags`).
+- **Revert:** copy the backup folder's contents back into the install folder and delete
+  `GlosSIWatchdog.exe`.
+
+## Limitations
+
+- The Steam overlay can no longer be drawn over *fullscreen* Store (UWP) apps; that feature
+  worked by hooking explorer.exe.
+- Whether Windows can *launch* Store (UWP) apps with no shell running is up to Windows,
+  not GlosSI; it hasn't been verified.
+- Tested with mingw builds under Wine (hard kill, successor instance, explorer
+  killed/restarted, no taskbar at startup, WMI unavailable, kill-on-close job with and
+  without breakaway). Not yet tested with MSVC on real Windows + Steam.
