@@ -42,8 +42,11 @@ if (-not $tag) { Fail "No git tags found. Run 'git fetch --tags' and try again."
 
 if (-not $SkipDeps) {
     Step 'Fetching submodules (subhook now comes from github.com/tianocore/edk2-subhook)'
-    git submodule sync --recursive
-    git submodule update --init --recursive --force
+    # deps/Shortcuts_VDF has a nested submodule with an SSH URL (git@github.com:...),
+    # which fails without an SSH key (e.g. on GitHub Actions). Rewrite it to HTTPS.
+    $httpsInsteadOfSsh = 'url.https://github.com/.insteadOf=git@github.com:'
+    git -c $httpsInsteadOfSsh submodule sync --recursive
+    git -c $httpsInsteadOfSsh submodule update --init --recursive --force
     Assert-LastExit 'git submodule update'
 
     Step 'Building SFML (RelWithDebInfo)'
