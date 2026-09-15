@@ -12,6 +12,7 @@ shell isn't running (and keeps working if you start/stop explorer while it runs)
 | **GlosSIWatchdog.dll** was injected into `explorer.exe` so it would outlive GlosSITarget | Now a standalone `GlosSIWatchdog.exe`, started via WMI (`Win32_Process.Create`) so it is neither a child of GlosSITarget nor in Steam's job object. Falls back to `CreateProcess` + job breakaway, then plain `CreateProcess` (logged) |
 | **UWPOverlayEnablerDLL.dll** was injected into `explorer.exe` | Removed (see limitations). `-disableuwpoverlay` is still accepted and does nothing |
 | `DllInjector.h` | Removed; nothing injects DLLs anymore |
+| Unhooking Steam's `CreateProcessW` hook wrote 8 bytes cached by GlosSIConfig; stale after Windows updates (or too short for 14-byte hooks) → access violation when launching the app | Original bytes are read from the DLL file on disk (only if it is the exact loaded build and the range has no relocations); cached/fallback bytes are only used otherwise |
 | `deps/subhook` pointed at `github.com/Zeex/subhook` (deleted) | Points at `github.com/tianocore/edk2-subhook`, which has the identical pinned commit |
 
 The watchdog now waits on GlosSITarget's process handle (`--pid`), and skips
