@@ -44,6 +44,19 @@ Set-ExecutionPolicy -Scope Process Bypass
 Output: `dist-no-explorer\` (GlosSITarget.exe, GlosSIWatchdog.exe, 3 SFML DLLs).
 Rebuild after edits with `.\build-no-explorer.ps1 -SkipDeps`.
 
+## Build on GitHub instead (no local Visual Studio)
+
+`.github/workflows/build-no-explorer.yml` builds the same files on a GitHub-hosted
+Windows runner (which has Visual Studio 2022 preinstalled):
+
+1. Fork `Alia5/GlosSI` on GitHub, open the fork's **Actions** tab and enable workflows.
+2. Clone your fork, fetch the bundle into it (as above), then `git push -u origin no-explorer`.
+3. When the run finishes, download the `glossi-no-explorer` artifact (a zip) from the run page
+   and extract it into `dist-no-explorer\` next to `install-no-explorer.ps1`.
+
+If the run didn't start (workflows were enabled after the push):
+`git commit --allow-empty -m "Build"; git push`.
+
 ## Install
 
 In an **elevated** PowerShell, in the same folder:
