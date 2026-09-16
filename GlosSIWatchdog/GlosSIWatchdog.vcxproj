@@ -71,11 +71,11 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>..\deps\spdlog\include;..\deps\json\include;..\deps\cpp-httplib;..\CEFInjectLib;$(IncludePath)</IncludePath>
+    <IncludePath>..\deps\WinReg;..\deps\ValveFileVDF;..\deps\spdlog\include;..\deps\json\include;..\deps\cpp-httplib;..\CEFInjectLib;$(IncludePath)</IncludePath>
     <LibraryPath>..\x64\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>..\deps\spdlog\include;..\deps\json\include;..\deps\cpp-httplib;..\CEFInjectLib;$(IncludePath)</IncludePath>
+    <IncludePath>..\deps\WinReg;..\deps\ValveFileVDF;..\deps\spdlog\include;..\deps\json\include;..\deps\cpp-httplib;..\CEFInjectLib;$(IncludePath)</IncludePath>
     <LibraryPath>..\x64\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -156,9 +156,11 @@
   <ItemGroup>
     <ClCompile Include="..\common\HidHide.cpp" />
     <ClCompile Include="..\common\UnhookUtil.cpp" />
+    <ClCompile Include="..\common\ArtworkFetcher.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\common\ArtworkFetcher.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>

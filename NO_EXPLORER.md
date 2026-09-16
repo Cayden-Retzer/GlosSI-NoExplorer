@@ -13,7 +13,8 @@ shell isn't running (and keeps working if you start/stop explorer while it runs)
 | **UWPOverlayEnablerDLL.dll** was injected into `explorer.exe` | Removed (see limitations). `-disableuwpoverlay` is still accepted and does nothing |
 | `DllInjector.h` | Removed; nothing injects DLLs anymore |
 | Unhooking Steam's `CreateProcessW` hook wrote 8 bytes cached by GlosSIConfig; stale after Windows updates (or too short for 14-byte hooks) → access violation when launching the app | Original bytes are read from the DLL file on disk (only if it is the exact loaded build and the range has no relocations); cached/fallback bytes are only used otherwise |
-| Steam library artwork had to be set manually | GlosSITarget fills in missing artwork from SteamGridDB (see below) |
+| Steam library artwork and icons had to be set manually | The watchdog fills in missing artwork (SteamGridDB) and the app icon (see below) |
+| A launch path pasted with quotes ("Copy as path") failed to launch | Surrounding quotes are ignored |
 | `deps/subhook` pointed at `github.com/Zeex/subhook` (deleted) | Points at `github.com/tianocore/edk2-subhook`, which has the identical pinned commit |
 
 The watchdog now waits on GlosSITarget's process handle (`--pid`), and skips
@@ -21,20 +22,22 @@ cleanup if a *new* GlosSITarget instance has taken over (same as the old DLL did
 
 GlosSIConfig is unchanged and never needed explorer; keep your installed copy.
 
-## Automatic Steam artwork (SteamGridDB)
+## Automatic Steam artwork and icons
 
-Same idea as SteamLaunchHelper, built into GlosSITarget. When a GlosSI shortcut starts,
-missing library artwork is downloaded from SteamGridDB into
-`<Steam>\userdata\<user>\config\grid\`: portrait cover (`<appid>p`), wide cover
-(`<appid>`), hero (`<appid>_hero`) and logo (`<appid>_logo`).
+Same idea as SteamLaunchHelper. Each time a GlosSI shortcut starts, GlosSIWatchdog
+(in the background, so GlosSITarget is never slowed down) fills in what's missing:
 
-- **Opt-in:** enter your own SteamGridDB API key in GlosSIConfig's global settings
-  (stored as `steamgridApiKey` in `%APPDATA%\GlosSI\default.json`).
-- Existing artwork is never overwritten; only missing images are fetched.
-- The search uses the shortcut's name; static PNG/JPEG only, no NSFW/humor art.
-- If SteamGridDB has nothing for a slot, it retries at most once a week.
-- **Restart Steam** after the first launch to see the new artwork.
-- The shortcut icon is unchanged (GlosSIConfig already uses the launched app's exe).
+- **Icon:** the launched app's own icon is saved as PNG to `%APPDATA%\GlosSI\icons\<appid>.png`
+  (SteamGridDB's icon if the target isn't an .exe) and applied to the Steam shortcut
+  immediately through Steam's client API. This needs Steam CEF remote debugging,
+  which GlosSI offers to enable. Icons you picked yourself in Steam are left alone.
+- **Artwork** (needs your SteamGridDB API key in GlosSIConfig's global settings,
+  stored as `steamgridApiKey` in `%APPDATA%\GlosSI\default.json`): portrait cover
+  (`<appid>p`), wide cover (`<appid>`), hero (`<appid>_hero`) and logo (`<appid>_logo`)
+  in `<Steam>\userdata\<user>\config\grid\`. Restart Steam once to see new artwork.
+  Existing artwork is never overwritten; slots SteamGridDB has nothing for are retried weekly.
+- Search uses the shortcut's name; static PNG/JPEG only, no NSFW/humor art.
+- Runs in the watchdog, so `-disablewatchdog` turns this off too.
 
 ## Requirements (Windows)
 

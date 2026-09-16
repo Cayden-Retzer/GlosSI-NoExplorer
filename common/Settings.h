@@ -186,6 +186,11 @@ namespace Settings
             {
                 safeParseValue(launchconf, "launch", launch.launch);
                 safeParseValue(launchconf, "launchPath", launch.launchPath);
+                // tolerate paths pasted with surrounding quotes (Explorer's "Copy as path")
+                while (launch.launchPath.size() >= 2 && launch.launchPath.front() == L'"' && launch.launchPath.back() == L'"')
+                {
+                    launch.launchPath = launch.launchPath.substr(1, launch.launchPath.size() - 2);
+                }
                 safeParseValue(launchconf, "launchAppArgs", launch.launchAppArgs);
                 safeParseValue(launchconf, "closeOnExit", launch.closeOnExit);
                 safeParseValue(launchconf, "waitForChildProcs", launch.waitForChildProcs);

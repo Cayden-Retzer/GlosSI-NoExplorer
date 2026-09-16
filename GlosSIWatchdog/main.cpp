@@ -47,6 +47,7 @@ limitations under the License.
 #include "../version.hpp"
 #include "../common/Settings.h"
 #include "../common/HidHide.h"
+#include "../common/ArtworkFetcher.h"
 
 #include <shellapi.h> // CommandLineToArgvW (WIN32_LEAN_AND_MEAN excludes it)
 
@@ -180,6 +181,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     httplib::Client http_client("http://localhost:8756");
     fetchSettings(http_client);
 
+    // Steam library icon + artwork for this shortcut; runs here so it can't block GlosSITarget
+    ArtworkFetcher artwork;
+    artwork.start();
+
     http_client.set_connection_timeout(2);
     http_client.set_read_timeout(5);
 
@@ -241,6 +246,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         }
     }
 
+    artwork.waitForCompletion();
     spdlog::info("GlosSIWatchdog exiting");
     if (instance_mutex != nullptr) {
         ReleaseMutex(instance_mutex);

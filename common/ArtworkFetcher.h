@@ -20,21 +20,21 @@ limitations under the License.
 #include <thread>
 
 /*
- * Fills in missing Steam library artwork for the running GlosSI shortcut,
- * using SteamGridDB (same idea as SteamLaunchHelper):
+ * Keeps the Steam library entry of a GlosSI shortcut looking like the real app
+ * (same idea as SteamLaunchHelper). Runs inside GlosSIWatchdog, so slow network
+ * requests can never block GlosSITarget's window.
  *
- *   <appid>p.*      portrait cover (600x900)
- *   <appid>.*       wide cover (920x430)
- *   <appid>_hero.*  library hero/background
- *   <appid>_logo.*  library logo
+ * Artwork (SteamGridDB, opt-in via API key in GlosSIConfig), written to
+ * <Steam>/userdata/<user>/config/grid/ - Steam shows it after a restart:
+ *   <appid>p.*  portrait cover     <appid>.*       wide cover
+ *   <appid>_hero.*  hero           <appid>_logo.*  logo
  *
- * written to <Steam>/userdata/<user>/config/grid/.
+ * Icon: GlosSIConfig stores the launched exe (quoted) as icon, which Steam
+ * doesn't display. The app's own icon is saved as PNG to %APPDATA%\GlosSI\icons
+ * (SteamGridDB icon if the target isn't an exe) and applied live through
+ * Steam's client JS API (requires Steam CEF remote debugging, which GlosSI asks for).
  *
- * - Opt-in: only runs if a SteamGridDB API key is set in GlosSIConfig
- *   (global settings, stored as "steamgridApiKey" in %APPDATA%\GlosSI\default.json).
- * - Never overwrites existing artwork; only missing images are fetched.
- * - Runs on a background thread; Steam shows new artwork after it restarts.
- * - The icon is not touched: GlosSIConfig already uses the launched app's exe as icon.
+ * Existing artwork and icons you picked yourself are never replaced.
  */
 class ArtworkFetcher {
   public:
@@ -44,7 +44,8 @@ class ArtworkFetcher {
     ArtworkFetcher& operator=(const ArtworkFetcher&) = delete;
 
     void start();
-    void stop();
+    void stop();              // cancel and wait
+    void waitForCompletion(); // wait without cancelling
 
   private:
     void run();

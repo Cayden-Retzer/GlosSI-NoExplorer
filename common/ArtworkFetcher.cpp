@@ -16,10 +16,16 @@ limitations under the License.
 #ifdef _WIN32
 #include "ArtworkFetcher.h"
 
-#include "../common/Settings.h"
-#include "../common/steam_util.h"
-#include "../common/util.h"
+#include "Settings.h"
+#include "steam_util.h"
+#include "util.h"
 
+#include <CEFInject.h>
+
+#include <objbase.h>
+#include <shellapi.h> // ExtractIconExW (WIN32_LEAN_AND_MEAN excludes it)
+#include <shlobj.h>
+#include <wincodec.h>
 #include <winhttp.h>
 
 #include <algorithm>
@@ -38,6 +44,8 @@ limitations under the License.
 #include <spdlog/spdlog.h>
 
 #pragma comment(lib, "Winhttp.lib")
+#pragma comment(lib, "Windowscodecs.lib")
+#pragma comment(lib, "Ole32.lib")
 
 #ifndef GLOSSI_SGDB_API_BASE
 #define GLOSSI_SGDB_API_BASE L"https://www.steamgriddb.com/api/v2"
@@ -269,6 +277,7 @@ struct ShortcutEntry {
     std::optional<uint32_t> appid;
     std::string appname;
     std::string exe;
+    std::string icon;
 };
 
 // Reads the fields of one map (after its key). depth guards against malformed nesting.
@@ -306,6 +315,9 @@ bool ReadMap(VdfReader& r, ShortcutEntry* entry, int depth)
             }
             if (entry && lkey == "exe") {
                 entry->exe = value;
+            }
+            if (entry && lkey == "icon") {
+                entry->icon = value;
             }
             break;
         }
@@ -372,17 +384,22 @@ std::vector<ShortcutEntry> ParseShortcutsVdf(const std::filesystem::path& path)
     return entries;
 }
 
+struct GlosSIShortcut {
+    uint32_t appid = 0;
+    std::string icon;
+};
+
 // Same matching + appid derivation as GlosSIConfig / Shortcuts_VDF
-std::optional<uint32_t> FindShortcutAppId(const std::filesystem::path& shortcuts_vdf, const std::string& name)
+std::optional<GlosSIShortcut> FindShortcut(const std::filesystem::path& shortcuts_vdf, const std::string& name)
 {
     for (const auto& e : ParseShortcutsVdf(shortcuts_vdf)) {
         if (e.appname != name || ToLower(e.exe).find("glossitarget.exe") == std::string::npos) {
             continue;
         }
-        if (e.appid && *e.appid != 0) {
-            return e.appid;
-        }
-        return Crc32(e.exe + e.appname) | 0x80000000;
+        GlosSIShortcut sc;
+        sc.icon = e.icon;
+        sc.appid = (e.appid && *e.appid != 0) ? *e.appid : (Crc32(e.exe + e.appname) | 0x80000000);
+        return sc;
     }
     return std::nullopt;
 }
@@ -487,6 +504,167 @@ bool DownloadTo(const nlohmann::json& asset, const std::filesystem::path& grid_d
     return true;
 }
 
+// ---------------------------------------------------------------- icon
+
+struct ComScope {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    ComScope() = default;
+    ~ComScope()
+    {
+        if (SUCCEEDED(hr)) {
+            CoUninitialize();
+        }
+    }
+    ComScope(const ComScope&) = delete;
+    ComScope& operator=(const ComScope&) = delete;
+};
+
+template <typename T>
+struct ComPtrLite {
+    T* p = nullptr;
+    ~ComPtrLite()
+    {
+        if (p) {
+            p->Release();
+        }
+    }
+    T** put() { return &p; }
+    T* operator->() const { return p; }
+};
+
+std::wstring Unquote(std::wstring s)
+{
+    const auto first = s.find_first_not_of(L" \t\"");
+    if (first == std::wstring::npos) {
+        return L"";
+    }
+    const auto last = s.find_last_not_of(L" \t\"");
+    return s.substr(first, last - first + 1);
+}
+
+std::wstring NormalizedPath(const std::wstring& p)
+{
+    std::wstring out = Unquote(p);
+    std::ranges::replace(out, L'/', L'\\');
+    std::ranges::transform(out, out.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+    return out;
+}
+
+bool SaveHiconAsPng(HICON icon, const std::filesystem::path& target)
+{
+    ComPtrLite<IWICImagingFactory> factory;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory,
+                                reinterpret_cast<LPVOID*>(factory.put())))) {
+        return false;
+    }
+    ComPtrLite<IWICBitmap> bitmap;
+    if (FAILED(factory->CreateBitmapFromHICON(icon, bitmap.put()))) {
+        return false;
+    }
+    const auto tmp = std::filesystem::path(target).replace_extension(L".glossi-tmp");
+    {
+        ComPtrLite<IWICStream> stream;
+        ComPtrLite<IWICBitmapEncoder> encoder;
+        ComPtrLite<IWICBitmapFrameEncode> frame;
+        ComPtrLite<IPropertyBag2> props;
+        UINT w = 0;
+        UINT h = 0;
+        WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
+        if (FAILED(factory->CreateStream(stream.put())) ||
+            FAILED(stream->InitializeFromFilename(tmp.c_str(), GENERIC_WRITE)) ||
+            FAILED(factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, encoder.put())) ||
+            FAILED(encoder->Initialize(stream.p, WICBitmapEncoderNoCache)) ||
+            FAILED(encoder->CreateNewFrame(frame.put(), props.put())) ||
+            FAILED(frame->Initialize(props.p)) ||
+            FAILED(bitmap->GetSize(&w, &h)) ||
+            FAILED(frame->SetSize(w, h)) ||
+            FAILED(frame->SetPixelFormat(&format)) ||
+            FAILED(frame->WriteSource(bitmap.p, nullptr)) ||
+            FAILED(frame->Commit()) ||
+            FAILED(encoder->Commit())) {
+            std::error_code ec;
+            std::filesystem::remove(tmp, ec);
+            return false;
+        }
+    }
+    if (!MoveFileExW(tmp.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        std::error_code ec;
+        std::filesystem::remove(tmp, ec);
+        return false;
+    }
+    return true;
+}
+
+// Saves the exe's own (largest available, up to 256px) icon as PNG
+bool SaveExeIconAsPng(const std::wstring& exe_path, const std::filesystem::path& target)
+{
+    HICON icon = nullptr;
+    if (FAILED(SHDefExtractIconW(exe_path.c_str(), 0, 0, &icon, nullptr, MAKELONG(256, 0))) || !icon) {
+        icon = nullptr;
+        if (ExtractIconExW(exe_path.c_str(), 0, &icon, nullptr, 1) == 0 || !icon) {
+            return false;
+        }
+    }
+    const bool ok = SaveHiconAsPng(icon, target);
+    DestroyIcon(icon);
+    return ok;
+}
+
+bool SaveBytes(const std::string& data, const std::filesystem::path& target)
+{
+    const auto tmp = std::filesystem::path(target).replace_extension(L".glossi-tmp");
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        out.write(data.data(), static_cast<std::streamsize>(data.size()));
+        if (!out) {
+            return false;
+        }
+    }
+    if (!MoveFileExW(tmp.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        std::error_code ec;
+        std::filesystem::remove(tmp, ec);
+        return false;
+    }
+    return true;
+}
+
+// Applies the icon live via Steam's client JS API (same call Steam's own Properties dialog ends up in)
+bool SetShortcutIconInSteam(uint32_t appid, const std::filesystem::path& icon_path)
+{
+    try {
+        const CEFInject::WSAStartupWrap wsa;
+        if (!CEFInject::CEFDebugAvailable()) {
+            spdlog::info("Icon: Steam CEF remote debugging is off; can't apply the icon automatically "
+                         "(GlosSI offers to enable it when it starts)");
+            return false;
+        }
+        const auto js_path = util::string::to_wstring(nlohmann::json(util::string::to_string(icon_path.wstring())).dump());
+        const std::wstring js = L"(() => { try {"
+                                L" const apps = window.SteamClient && window.SteamClient.Apps;"
+                                L" if (!apps || typeof apps.SetShortcutIcon !== 'function') return 'SetShortcutIcon unavailable';"
+                                L" apps.SetShortcutIcon(" + std::to_wstring(appid) + L", " + js_path + L");"
+                                L" return 'ok';"
+                                L" } catch (e) { return 'error: ' + e; } })()";
+        for (const auto* tab : {L"SharedJSContext", L"Steam Shared Context"}) {
+            const auto res = CEFInject::InjectJsByName(tab, js);
+            if (res.is_string()) {
+                const auto msg = res.get<std::string>();
+                if (msg == "ok") {
+                    spdlog::info(L"Icon: applied {} to Steam shortcut {}", icon_path.wstring(), appid);
+                    return true;
+                }
+                spdlog::warn("Icon: Steam refused the icon: {}", msg);
+                return false;
+            }
+        }
+        spdlog::warn("Icon: couldn't find Steam's shared JS context");
+    }
+    catch (const std::exception& e) {
+        spdlog::warn("Icon: couldn't talk to Steam: {}", e.what());
+    }
+    return false;
+}
+
 std::wstring ReadApiKey()
 {
     try {
@@ -535,6 +713,11 @@ void ArtworkFetcher::start()
 void ArtworkFetcher::stop()
 {
     stop_requested_ = true;
+    waitForCompletion();
+}
+
+void ArtworkFetcher::waitForCompletion()
+{
     if (thread_.joinable()) {
         thread_.join();
     }
@@ -543,7 +726,7 @@ void ArtworkFetcher::stop()
 void ArtworkFetcher::run()
 {
     const auto name = util::string::to_string(Settings::common.name);
-    if (name.empty() || Settings::settings_path_.empty()) {
+    if (name.empty()) {
         return; // not started from a GlosSI shortcut
     }
 
@@ -558,14 +741,89 @@ void ArtworkFetcher::run()
         return;
     }
     const auto config_dir = steam_path / "userdata" / user_id / "config";
-    const auto appid = FindShortcutAppId(config_dir / "shortcuts.vdf", name);
-    if (!appid) {
+    const auto shortcut = FindShortcut(config_dir / "shortcuts.vdf", name);
+    if (!shortcut) {
         spdlog::debug("Artwork: \"{}\" not found in shortcuts.vdf; skipping", name);
         return;
     }
-    const auto id = std::to_wstring(*appid);
+    const auto appid = shortcut->appid;
+    const auto id = std::to_wstring(appid);
     const auto grid_dir = config_dir / "grid";
+    const auto api_key = ReadApiKey();
 
+    // SteamGridDB game id, looked up at most once
+    std::optional<int> game_id_cache;
+    const auto get_game_id = [&]() -> int {
+        if (game_id_cache) {
+            return *game_id_cache;
+        }
+        game_id_cache = 0;
+        if (api_key.empty() || stop_requested_) {
+            return 0;
+        }
+        const auto results = ApiGet(L"/search/autocomplete/" + UrlEncode(name), api_key);
+        if (!results) {
+            return 0;
+        }
+        if (results->empty()) {
+            spdlog::info("Artwork: no SteamGridDB match for \"{}\"", name);
+            return 0;
+        }
+        game_id_cache = JsonInt((*results)[0], "id");
+        spdlog::info("Artwork: using SteamGridDB game \"{}\" (id {}) for \"{}\"",
+                     JsonStr((*results)[0], "name"), *game_id_cache, name);
+        return *game_id_cache;
+    };
+
+    // ---------------- icon
+    [&]() {
+        const auto icons_dir = util::path::getDataDirPath() / "icons";
+        const auto desired = icons_dir / (id + L".png");
+        const auto current = NormalizedPath(util::string::to_wstring(shortcut->icon));
+        const auto launch_path = NormalizedPath(Settings::launch.launchPath);
+        const bool is_ours = current == NormalizedPath(desired.wstring());
+        const bool is_default = current.empty() || current == launch_path ||
+                                current.find(L"glossitarget.exe") != std::wstring::npos;
+        std::error_code ec;
+        if (!is_ours && !is_default) {
+            spdlog::debug("Icon: custom icon set for appid {}; leaving it alone", appid);
+            return;
+        }
+        if (is_ours && std::filesystem::exists(desired, ec)) {
+            spdlog::debug("Icon: already set for appid {}", appid);
+            return;
+        }
+        std::filesystem::create_directories(icons_dir, ec);
+        bool have_icon = std::filesystem::exists(desired, ec);
+        const auto exe = Unquote(Settings::launch.launchPath);
+        if (!have_icon && ToLower(util::string::to_string(exe)).ends_with(".exe") && std::filesystem::exists(exe, ec)) {
+            const ComScope com;
+            have_icon = SaveExeIconAsPng(exe, desired);
+            if (have_icon) {
+                spdlog::info(L"Icon: extracted icon from {}", exe);
+            }
+        }
+        if (!have_icon && get_game_id() != 0 && !stop_requested_) {
+            if (const auto icons = ApiGet(L"/icons/game/" + std::to_wstring(*game_id_cache) + L"?mimes=image/png&nsfw=false&humor=false", api_key)) {
+                if (const auto asset = PickAsset(*icons, {}, 0)) {
+                    const auto res = HttpGet(util::string::to_wstring(JsonStr(*asset, "url")), L"");
+                    have_icon = res.ok && res.status == 200 && LooksLikeImage(res.body) && SaveBytes(res.body, desired);
+                    if (have_icon) {
+                        spdlog::info("Icon: downloaded icon from SteamGridDB");
+                    }
+                }
+            }
+        }
+        if (!have_icon) {
+            spdlog::info("Icon: no icon source for appid {}", appid);
+            return;
+        }
+        if (!stop_requested_) {
+            SetShortcutIconInSteam(appid, desired);
+        }
+    }();
+
+    // ---------------- artwork
     std::vector<AssetSlot> missing;
     for (const auto& slot : {AssetSlot{"cover", id + L"p"}, AssetSlot{"wide", id},
                              AssetSlot{"hero", id + L"_hero"}, AssetSlot{"logo", id + L"_logo"}}) {
@@ -574,11 +832,9 @@ void ArtworkFetcher::run()
         }
     }
     if (missing.empty()) {
-        spdlog::debug("Artwork: all artwork present for appid {}", *appid);
+        spdlog::debug("Artwork: all artwork present for appid {}", appid);
         return;
     }
-
-    const auto api_key = ReadApiKey();
     if (api_key.empty()) {
         spdlog::info("Artwork: {} image(s) missing; set a SteamGridDB API key in GlosSIConfig to fetch them automatically",
                      missing.size());
@@ -591,26 +847,15 @@ void ArtworkFetcher::run()
     if (std::filesystem::exists(marker, ec)) {
         const auto age = std::filesystem::file_time_type::clock::now() - std::filesystem::last_write_time(marker, ec);
         if (!ec && age < RECHECK_AFTER) {
-            spdlog::debug("Artwork: checked recently for appid {}; skipping", *appid);
+            spdlog::debug("Artwork: checked recently for appid {}; skipping", appid);
             return;
         }
     }
 
-    const auto search_term = util::string::to_string(Settings::common.name);
-    const auto results = ApiGet(L"/search/autocomplete/" + UrlEncode(search_term), api_key);
-    if (stop_requested_ || !results) {
+    const auto game_id = get_game_id();
+    if (game_id == 0 || stop_requested_) {
         return;
     }
-    if (results->empty()) {
-        spdlog::info("Artwork: no SteamGridDB match for \"{}\"", search_term);
-        return;
-    }
-    const auto game_id = JsonInt((*results)[0], "id");
-    if (game_id == 0) {
-        return;
-    }
-    spdlog::info("Artwork: using SteamGridDB game \"{}\" (id {}) for \"{}\"",
-                 JsonStr((*results)[0], "name"), game_id, name);
 
     const auto gid = std::to_wstring(game_id);
     constexpr auto filters = L"?types=static&nsfw=false&humor=false";
