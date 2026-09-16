@@ -239,9 +239,6 @@ int SteamTarget::run()
         window_.update();
 #ifdef _WIN32
         enforceClickThrough();
-        if (Settings::window.parkCursorInSteam && fully_initialized_ && !delayed_shutdown_) {
-            cursor_parker_.update(target_window_handle_, force_config_hwnds_);
-        }
 #endif
 #ifdef _WIN32
         if (tray) {
@@ -304,8 +301,11 @@ int SteamTarget::run()
         shutdownStep("closing launcher handles");
         launcher_.close();
         if (cef_tweaks_enabled_) {
-            shutdownStep("removing Steam UI tweaks");
-            steam_tweaks_.uninstallTweaks();
+            // Don't call steam_tweaks_.uninstallTweaks() here: it waits on Steam's UI tabs with no
+            // timeout and can block indefinitely. The injected tweaks remove themselves once
+            // GlosSI's http server (stopped above) stops answering.
+            shutdownStep("leaving Steam UI tweaks to remove themselves");
+            steam_tweaks_.setAutoInject(false);
         }
     }
 

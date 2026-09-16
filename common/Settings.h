@@ -63,7 +63,6 @@ namespace Settings
         bool disableGlosSIOverlay = false;
         bool opaqueSteamOverlay = false;
         bool forwardKeyboardInput = true;
-        bool parkCursorInSteam = true;
     } window;
 
     inline struct Controller
@@ -230,7 +229,6 @@ namespace Settings
                 safeParseValue(winconf, "disableGlosSIOverlay", window.disableGlosSIOverlay);
                 safeParseValue(winconf, "opaqueSteamOverlay", window.opaqueSteamOverlay);
                 safeParseValue(winconf, "forwardKeyboardInput", window.forwardKeyboardInput);
-                safeParseValue(winconf, "parkCursorInSteam", window.parkCursorInSteam);
             }
 
             if (const auto controllerConf = json["controller"]; !controllerConf.is_null() && !controllerConf.empty() && controllerConf.is_object())
@@ -350,7 +348,6 @@ namespace Settings
         json["window"]["hideAltTab"] = window.hideAltTab;
         json["window"]["opaqueSteamOverlay"] = window.opaqueSteamOverlay;
         json["window"]["forwardKeyboardInput"] = window.forwardKeyboardInput;
-        json["window"]["parkCursorInSteam"] = window.parkCursorInSteam;
         json["controller"]["maxControllers"] = controller.maxControllers;
         json["controller"]["allowDesktopConfig"] = controller.allowDesktopConfig;
         json["controller"]["emulateDS4"] = controller.emulateDS4;

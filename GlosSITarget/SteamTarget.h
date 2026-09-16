@@ -22,7 +22,6 @@ limitations under the License.
 
 #ifdef _WIN32
 #include "../common/HidHide.h"
-#include "CursorParker.h"
 #include "InputRedirector.h"
 #include <subhook.h>
 #endif
@@ -94,7 +93,6 @@ class SteamTarget {
 #ifdef _WIN32
     HidHide hidhide_;
     InputRedirector input_redirector_;
-    CursorParker cursor_parker_;
 
     // Make our window click-through again if something else is in front while it still takes input.
     void enforceClickThrough();

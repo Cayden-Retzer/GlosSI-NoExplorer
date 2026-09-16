@@ -38,16 +38,6 @@ GlosSI overlay is open.
 
 On by default; disable per shortcut with `"window": { "forwardKeyboardInput": false }`.
 
-## Cursor parking in Big Picture
-
-Big Picture on Windows keeps showing the mouse cursor once it has been used, even while
-navigating with a controller. When focus moves from the launched app (or GlosSI's own
-window) to a Steam window covering (almost) the whole monitor, GlosSITarget moves the cursor to that monitor's
-bottom-right corner. When the launched app gets focus again and the cursor hasn't been
-moved, it goes back to where it was.
-
-On by default; disable per shortcut with `"window": { "parkCursorInSteam": false }`.
-
 ## Input lock / "not responding" safeguards
 
 - If GlosSI still thinks the Steam overlay is open (so its invisible full-screen window takes
@@ -56,6 +46,16 @@ On by default; disable per shortcut with `"window": { "parkCursorInSteam": false
 - On shutdown the window is hidden before any cleanup runs, each cleanup step is logged
   (`Shutdown: ...`), and if cleanup hasn't finished after 10 s GlosSITarget force-exits
   (GlosSIWatchdog resets HidHide afterwards).
+- Shutdown no longer waits for the Steam UI tweaks to be uninstalled (that call could block
+  forever); the injected tweaks remove themselves once GlosSITarget stops answering.
+
+## Using Big Picture as your shell
+
+The Steam UI tweaks (active whenever Steam's CEF remote debugging is on, which the artwork
+feature needs) include one that **minimizes Big Picture** when a shortcut starts. GlosSIConfig
+writes `"minimizeSteamGamepadUI": true` into every shortcut without showing it in the UI. If
+Big Picture is your main UI, set it to `false` in `%APPDATA%\GlosSI\Targets\<shortcut>.json`
+(and in `%APPDATA%\GlosSI\default.json` for new shortcuts).
 
 ## Automatic Steam artwork and icons
 
