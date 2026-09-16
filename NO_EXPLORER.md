@@ -57,6 +57,14 @@ writes `"minimizeSteamGamepadUI": true` into every shortcut without showing it i
 Big Picture is your main UI, set it to `false` in `%APPDATA%\GlosSI\Targets\<shortcut>.json`
 (and in `%APPDATA%\GlosSI\default.json` for new shortcuts).
 
+**Steam overlay focus.** Upstream GlosSI moves focus to its own invisible, input-taking
+window whenever the Steam overlay opens. With Big Picture as the shell that keeps Big Picture
+from ever getting focus back (you end up navigating Steam "through" GlosSI's window, with a
+cursor Big Picture can't hide). This fork leaves focus alone by default and keeps the window
+click-through; if Steam hands focus to GlosSI's window (e.g. "Resume game"), GlosSI passes it
+on to the launched app. Restore the upstream behaviour per shortcut with
+`"window": { "focusOnSteamOverlay": true }`.
+
 ## Automatic Steam artwork and icons
 
 Same idea as SteamLaunchHelper. Each time a GlosSI shortcut starts, GlosSIWatchdog

@@ -98,6 +98,14 @@ class SteamTarget {
     void enforceClickThrough();
     sf::Clock click_through_check_clock_;
     int click_through_mismatch_count_ = 0;
+
+    // With focusOnSteamOverlay off: if Steam activates our window (e.g. "Resume game"),
+    // hand focus to the launched app instead of keeping it on our invisible window.
+    void handFocusToApp();
+    bool steam_overlay_open_ = false;
+    HWND last_app_window_ = nullptr;
+    sf::Clock focus_check_clock_;
+    int own_focus_count_ = 0;
 #endif
     TargetWindow window_;
     std::weak_ptr<Overlay> overlay_;

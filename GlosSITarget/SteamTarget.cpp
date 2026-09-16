@@ -33,6 +33,7 @@ limitations under the License.
 
 #include "CommonHttpEndpoints.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -239,6 +240,7 @@ int SteamTarget::run()
         window_.update();
 #ifdef _WIN32
         enforceClickThrough();
+        handFocusToApp();
 #endif
 #ifdef _WIN32
         if (tray) {
@@ -360,17 +362,80 @@ void SteamTarget::enforceClickThrough()
 }
 #endif
 
+#ifdef _WIN32
+void SteamTarget::handFocusToApp()
+{
+    if (Settings::window.focusOnSteamOverlay || Settings::window.windowMode || !steam_overlay_present_ ||
+        !fully_initialized_ || delayed_shutdown_) {
+        return;
+    }
+    if (focus_check_clock_.getElapsedTime().asMilliseconds() < 250) {
+        return;
+    }
+    focus_check_clock_.restart();
+
+    const HWND fg = realForegroundWindow();
+    if (fg != nullptr && fg != target_window_handle_ && std::ranges::find(force_config_hwnds_, fg) != force_config_hwnds_.end()) {
+        last_app_window_ = fg;
+    }
+    const bool glossi_overlay_open = !overlay_.expired() && overlay_.lock()->isEnabled();
+    if (fg != target_window_handle_ || steam_overlay_open_ || glossi_overlay_open) {
+        own_focus_count_ = 0;
+        return;
+    }
+    if (++own_focus_count_ < 2) { // ~0.5 s
+        return;
+    }
+    own_focus_count_ = 0;
+
+    if (last_app_window_ == nullptr || !IsWindow(last_app_window_) || !IsWindowVisible(last_app_window_)) {
+        last_app_window_ = nullptr;
+        for (const auto hwnd : force_config_hwnds_) {
+            if (IsWindowVisible(hwnd) && GetWindow(hwnd, GW_OWNER) == nullptr) {
+                last_app_window_ = hwnd;
+                break;
+            }
+        }
+    }
+    if (last_app_window_ == nullptr) {
+        return;
+    }
+    spdlog::info("GlosSI's window got focus without an open overlay; handing focus to the launched app ({:#x})",
+                 reinterpret_cast<uint64_t>(last_app_window_));
+    if (IsIconic(last_app_window_)) {
+        ShowWindow(last_app_window_, SW_RESTORE);
+    }
+    window_.setClickThrough(true);
+    focusWindow(last_app_window_);
+}
+#endif
+
 void SteamTarget::onOverlayChanged(bool overlay_open)
 {
+#ifdef _WIN32
+    steam_overlay_open_ = overlay_open;
+#endif
+    const bool take_focus = Settings::window.focusOnSteamOverlay || Settings::window.windowMode;
     if (overlay_open) {
-        focusWindow(target_window_handle_);
-        window_.setClickThrough(!overlay_open);
+        if (take_focus) {
+            focusWindow(target_window_handle_);
+            window_.setClickThrough(!overlay_open);
+        }
+        else {
+            spdlog::debug("Overlay opened; staying click-through and leaving focus alone (focusOnSteamOverlay is off)");
+        }
         if (!Settings::window.windowMode && Settings::window.opaqueSteamOverlay) {
             window_.setTransparent(false);
         }
     }
     else {
-        if (!(overlay_.expired() ? false : overlay_.lock()->isEnabled())) {
+        if (!take_focus) {
+            spdlog::debug("Overlay closed; leaving focus alone (focusOnSteamOverlay is off)");
+            if (!Settings::window.windowMode && Settings::window.opaqueSteamOverlay) {
+                window_.setTransparent(true);
+            }
+        }
+        else if (!(overlay_.expired() ? false : overlay_.lock()->isEnabled())) {
             window_.setClickThrough(!overlay_open);
 #ifdef _WIN32
             const bool still_focused = realForegroundWindow() == target_window_handle_;
