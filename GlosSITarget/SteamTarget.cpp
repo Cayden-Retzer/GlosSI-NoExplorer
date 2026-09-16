@@ -252,6 +252,22 @@ int SteamTarget::run()
     return 0;
 }
 
+#ifdef _WIN32
+namespace {
+// GetForegroundWindow is detoured in this process (keepControllerConfig),
+// so ask the foreground GUI thread for the real active window instead.
+HWND realForegroundWindow()
+{
+    GUITHREADINFO info{};
+    info.cbSize = sizeof(info);
+    if (!GetGUIThreadInfo(0, &info)) {
+        return nullptr;
+    }
+    return info.hwndActive;
+}
+} // namespace
+#endif
+
 void SteamTarget::onOverlayChanged(bool overlay_open)
 {
     if (overlay_open) {
@@ -264,7 +280,23 @@ void SteamTarget::onOverlayChanged(bool overlay_open)
     else {
         if (!(overlay_.expired() ? false : overlay_.lock()->isEnabled())) {
             window_.setClickThrough(!overlay_open);
-            focusWindow(last_foreground_window_);
+#ifdef _WIN32
+            const bool still_focused = realForegroundWindow() == target_window_handle_;
+#else
+            const bool still_focused = true;
+#endif
+            if (still_focused) {
+                focusWindow(last_foreground_window_);
+            }
+            else {
+                // Something else (e.g. Big Picture via the Steam menu) took the foreground while
+                // the overlay was open. Don't yank the launched app back in front of it,
+                // just make sure our invisible window isn't holding on to the mouse.
+#ifdef _WIN32
+                ReleaseCapture();
+#endif
+                spdlog::debug("Overlay closed; another window already has focus, not refocusing launched app");
+            }
             if (!Settings::window.windowMode && Settings::window.opaqueSteamOverlay) {
                 window_.setTransparent(true);
             }
@@ -324,12 +356,21 @@ void SteamTarget::focusWindow(WindowHandle hndl)
 
     keepControllerConfig(true); // re-hook GetForegroundWindow
 
+    if (hndl != target_window_handle_) {
+        // SetCapture below only ever succeeds for our own window, and nothing released it again.
+        // A leftover capture keeps the mouse on our invisible window, so no other window gets
+        // WM_SETCURSOR and the cursor shape freezes (e.g. a stuck busy ring over Big Picture).
+        ReleaseCapture();
+    }
+
     // lot's of ways actually bringing our window to foreground...
     const auto current_thread = GetCurrentThreadId();
     AttachThreadInput(current_thread, fg_thread, TRUE);
 
     SetForegroundWindow(hndl);
-    SetCapture(hndl);
+    if (hndl == target_window_handle_) {
+        SetCapture(hndl);
+    }
     SetFocus(hndl);
     SetActiveWindow(hndl);
     EnableWindow(hndl, TRUE);
