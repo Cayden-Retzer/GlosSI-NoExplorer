@@ -42,11 +42,20 @@ On by default; disable per shortcut with `"window": { "forwardKeyboardInput": fa
 
 Big Picture on Windows keeps showing the mouse cursor once it has been used, even while
 navigating with a controller. When focus moves from the launched app (or GlosSI's own
-window) to a full-screen Steam window, GlosSITarget moves the cursor to that monitor's
+window) to a Steam window covering (almost) the whole monitor, GlosSITarget moves the cursor to that monitor's
 bottom-right corner. When the launched app gets focus again and the cursor hasn't been
 moved, it goes back to where it was.
 
 On by default; disable per shortcut with `"window": { "parkCursorInSteam": false }`.
+
+## Input lock / "not responding" safeguards
+
+- If GlosSI still thinks the Steam overlay is open (so its invisible full-screen window takes
+  input) while another window such as Big Picture is really in front, the window is made
+  click-through again after ~0.75 s.
+- On shutdown the window is hidden before any cleanup runs, each cleanup step is logged
+  (`Shutdown: ...`), and if cleanup hasn't finished after 10 s GlosSITarget force-exits
+  (GlosSIWatchdog resets HidHide afterwards).
 
 ## Automatic Steam artwork and icons
 

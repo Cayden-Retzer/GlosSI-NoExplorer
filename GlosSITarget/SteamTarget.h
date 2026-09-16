@@ -95,6 +95,11 @@ class SteamTarget {
     HidHide hidhide_;
     InputRedirector input_redirector_;
     CursorParker cursor_parker_;
+
+    // Make our window click-through again if something else is in front while it still takes input.
+    void enforceClickThrough();
+    sf::Clock click_through_check_clock_;
+    int click_through_mismatch_count_ = 0;
 #endif
     TargetWindow window_;
     std::weak_ptr<Overlay> overlay_;

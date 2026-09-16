@@ -33,6 +33,38 @@ limitations under the License.
 
 #include "CommonHttpEndpoints.h"
 
+#include <atomic>
+#include <chrono>
+#include <thread>
+
+namespace {
+std::atomic<const char*> shutdown_step{"not shutting down"};
+
+void shutdownStep(const char* step)
+{
+    shutdown_step = step;
+    spdlog::debug("Shutdown: {}", step);
+}
+
+#ifdef _WIN32
+// If shutdown cleanup (or anything after it) hangs, GlosSITarget would linger forever.
+// GlosSIWatchdog resets HidHide once we're gone, so a hard exit is the lesser evil.
+void startShutdownTimeout(std::chrono::seconds timeout)
+{
+    auto logger = spdlog::default_logger(); // keep the logger alive even after spdlog::shutdown()
+    std::thread([logger, timeout] {
+        std::this_thread::sleep_for(timeout);
+        if (logger) {
+            logger->error("Shutdown step \"{}\" didn't finish within {}s; forcing GlosSITarget to exit",
+                          shutdown_step.load(), timeout.count());
+            logger->flush();
+        }
+        TerminateProcess(GetCurrentProcess(), 1);
+    }).detach();
+}
+#endif
+} // namespace
+
 SteamTarget::SteamTarget()
     : window_(
           [this] { run_ = false; },
@@ -189,6 +221,7 @@ int SteamTarget::run()
 #endif
 
     bool delayed_full_init_1_frame = false;
+    bool shutdown_click_through_set = false;
     sf::Clock frame_time_clock;
 
     while (run_) {
@@ -205,6 +238,7 @@ int SteamTarget::run()
         overlayHotkeyWorkaround();
         window_.update();
 #ifdef _WIN32
+        enforceClickThrough();
         if (Settings::window.parkCursorInSteam && fully_initialized_ && !delayed_shutdown_) {
             cursor_parker_.update(target_window_handle_, force_config_hwnds_);
         }
@@ -221,6 +255,16 @@ int SteamTarget::run()
 
         // Wait on shutdown; User might get confused if window closes to fast if anything with launchApp get's borked.
         if (delayed_shutdown_) {
+#ifdef _WIN32
+            if (!shutdown_click_through_set) {
+                // don't let our invisible window eat input during the shutdown delay
+                shutdown_click_through_set = true;
+                if (steam_overlay_present_ && !Settings::window.windowMode) {
+                    window_.setClickThrough(true);
+                }
+                ReleaseCapture();
+            }
+#endif
             if (delay_shutdown_clock_.getElapsedTime().asSeconds() >= 3) {
                 run_ = false;
             }
@@ -237,23 +281,35 @@ int SteamTarget::run()
         frame_time_clock.restart();
     }
 #ifdef _WIN32
+    // Get our full-screen window out of the way first. If any cleanup step below is slow,
+    // Windows would otherwise swap it for a white "not responding" window over everything.
+    window_.hide();
+    ReleaseCapture();
+    startShutdownTimeout(std::chrono::seconds(10));
+    shutdownStep("removing tray icon");
     tray.reset();
 #else
     tray->exit();
 #endif
 
+    shutdownStep("stopping http server");
     server_.stop();
     if (fully_initialized_) {
 #ifdef _WIN32
+        shutdownStep("stopping controller redirection");
         input_redirector_.stop();
+        shutdownStep("resetting HidHide");
         hidhide_.disableHidHide();
 #endif
+        shutdownStep("closing launcher handles");
         launcher_.close();
         if (cef_tweaks_enabled_) {
+            shutdownStep("removing Steam UI tweaks");
             steam_tweaks_.uninstallTweaks();
         }
     }
 
+    shutdownStep("releasing resources (after run)");
     return 0;
 }
 
@@ -271,6 +327,37 @@ HWND realForegroundWindow()
     return info.hwndActive;
 }
 } // namespace
+#endif
+
+#ifdef _WIN32
+void SteamTarget::enforceClickThrough()
+{
+    // GlosSI's window should only take input while the Steam overlay is open over the launched app.
+    // If the overlay detector still thinks the overlay is open but another window (e.g. Big Picture)
+    // is really in front, our invisible full-screen window would swallow every click.
+    if (Settings::window.windowMode || !steam_overlay_present_ || !fully_initialized_) {
+        return;
+    }
+    if (click_through_check_clock_.getElapsedTime().asMilliseconds() < 250) {
+        return;
+    }
+    click_through_check_clock_.restart();
+
+    const bool glossi_overlay_open = !overlay_.expired() && overlay_.lock()->isEnabled();
+    const HWND fg = realForegroundWindow();
+    if (window_.isClickThrough() || glossi_overlay_open || fg == nullptr || fg == target_window_handle_) {
+        click_through_mismatch_count_ = 0;
+        return;
+    }
+    if (++click_through_mismatch_count_ < 3) { // ~0.75 s, let focus changes settle
+        return;
+    }
+    click_through_mismatch_count_ = 0;
+    spdlog::info("Window {:#x} is in front but GlosSI's window still takes input; making it click-through again",
+                 reinterpret_cast<uint64_t>(fg));
+    window_.setClickThrough(true);
+    ReleaseCapture();
+}
 #endif
 
 void SteamTarget::onOverlayChanged(bool overlay_open)

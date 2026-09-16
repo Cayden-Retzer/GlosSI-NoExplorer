@@ -149,6 +149,23 @@ void TargetWindow::setClickThrough(bool click_through)
 #endif
 }
 
+bool TargetWindow::isClickThrough() const
+{
+#ifdef _WIN32
+    const auto ex_style = GetWindowLong(window_.getSystemHandle(), GWL_EXSTYLE);
+    return (ex_style & WS_EX_TRANSPARENT) != 0;
+#else
+    return true;
+#endif
+}
+
+void TargetWindow::hide() const
+{
+#ifdef _WIN32
+    ShowWindow(window_.getSystemHandle(), SW_HIDE);
+#endif
+}
+
 void TargetWindow::setTransparent(bool transparent) const
 {
     HWND hwnd = window_.getSystemHandle();

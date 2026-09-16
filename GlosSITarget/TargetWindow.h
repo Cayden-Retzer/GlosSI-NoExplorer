@@ -40,6 +40,9 @@ class TargetWindow {
 
     void setFpsLimit(unsigned int fps_limit);
     void setClickThrough(bool click_through);
+    bool isClickThrough() const;
+    // Hide the window without destroying it (used before shutdown cleanup).
+    void hide() const;
     void setTransparent(bool transparent) const;
     void update();
     void close();

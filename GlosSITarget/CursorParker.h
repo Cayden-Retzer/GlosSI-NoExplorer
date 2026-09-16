@@ -29,8 +29,8 @@ limitations under the License.
 /*
  * Big Picture on Windows keeps showing the mouse cursor once it has been used, even while
  * you navigate with a controller. When focus moves from the launched app (or GlosSI's own
- * window) to a full-screen Steam window, park the cursor in that monitor's bottom-right
- * corner, where it is effectively invisible. When the launched app gets focus again and the
+ * window) to a Steam window covering (almost) the whole monitor, park the cursor in that
+ * monitor's bottom-right corner, where it is effectively invisible. When the launched app gets focus again and the
  * cursor is still parked, put it back where it was.
  */
 class CursorParker {
@@ -47,22 +47,24 @@ class CursorParker {
         if (fg == nullptr || fg == last_fg_) {
             return;
         }
-        const HWND prev = last_fg_;
         last_fg_ = fg;
-        if (prev == nullptr) {
-            return; // first observation, nothing to compare against
-        }
 
-        const bool prev_app_side = prev == own_window || contains(app_windows, prev);
-        const bool now_app = contains(app_windows, fg);
-
-        if (prev_app_side && !now_app && fg != own_window) {
-            if (isFullscreenSteamWindow(fg)) {
-                park(fg);
+        if (fg == own_window || contains(app_windows, fg)) {
+            came_from_app_ = true;
+            if (parked_ && fg != own_window) {
+                restore();
             }
+            return;
         }
-        else if (now_app && parked_) {
-            restore();
+        if (!isSteamWindow(fg)) {
+            came_from_app_ = false; // switched to some other program; leave the cursor alone
+            return;
+        }
+        // Steam window. Small ones (menus, popups) may show up on the way to Big Picture,
+        // so only the big one decides.
+        if (came_from_app_ && isBigWindow(fg)) {
+            came_from_app_ = false;
+            park(fg);
         }
     }
 
@@ -70,6 +72,7 @@ class CursorParker {
     static constexpr int CHECK_INTERVAL_MS = 100;
     sf::Clock check_clock_;
     HWND last_fg_ = nullptr;
+    bool came_from_app_ = false;
     bool parked_ = false;
     POINT saved_pos_{};
     POINT parked_pos_{};
@@ -90,7 +93,21 @@ class CursorParker {
         return std::ranges::find(list, hwnd) != list.end();
     }
 
-    static bool isFullscreenSteamWindow(HWND hwnd)
+    static std::string describe(HWND hwnd)
+    {
+        wchar_t cls[128]{};
+        wchar_t title[256]{};
+        GetClassNameW(hwnd, cls, 128);
+        GetWindowTextW(hwnd, title, 256);
+        try {
+            return util::string::to_string(std::wstring(title)) + " [" + util::string::to_string(std::wstring(cls)) + "]";
+        }
+        catch (...) { // odd characters in a window title must never take GlosSI down
+            return "?";
+        }
+    }
+
+    static bool isSteamWindow(HWND hwnd)
     {
         DWORD pid = 0;
         GetWindowThreadProcessId(hwnd, &pid);
@@ -99,23 +116,29 @@ class CursorParker {
         }
         std::wstring name = util::win::process::GetProcName(pid);
         std::ranges::transform(name, name.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-        if (name != L"steamwebhelper.exe" && name != L"steam.exe") {
-            return false;
-        }
+        return name == L"steamwebhelper.exe" || name == L"steam.exe";
+    }
 
+    // Covers at least 90% of its monitor in both directions (Big Picture, not a popup).
+    static bool isBigWindow(HWND hwnd)
+    {
         RECT wnd{};
         MONITORINFO mi{};
         mi.cbSize = sizeof(mi);
         if (!GetWindowRect(hwnd, &wnd) || !GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi)) {
             return false;
         }
-        const bool fullscreen = wnd.left <= mi.rcMonitor.left && wnd.top <= mi.rcMonitor.top &&
-                                wnd.right >= mi.rcMonitor.right && wnd.bottom >= mi.rcMonitor.bottom;
-        if (!fullscreen) {
-            spdlog::debug("Cursor parking: Steam window {:#x} isn't full-screen, leaving cursor alone",
-                          reinterpret_cast<uint64_t>(hwnd));
-        }
-        return fullscreen;
+        RECT visible{};
+        IntersectRect(&visible, &wnd, &mi.rcMonitor);
+        const long mon_w = mi.rcMonitor.right - mi.rcMonitor.left;
+        const long mon_h = mi.rcMonitor.bottom - mi.rcMonitor.top;
+        const long vis_w = visible.right - visible.left;
+        const long vis_h = visible.bottom - visible.top;
+        const bool big = mon_w > 0 && mon_h > 0 && vis_w * 10 >= mon_w * 9 && vis_h * 10 >= mon_h * 9;
+        spdlog::debug("Cursor parking: Steam window {:#x} \"{}\" is {}x{} on a {}x{} monitor -> {}",
+                      reinterpret_cast<uint64_t>(hwnd), describe(hwnd), vis_w, vis_h, mon_w, mon_h,
+                      big ? "parking" : "too small, ignoring");
+        return big;
     }
 
     void park(HWND steam_window)
