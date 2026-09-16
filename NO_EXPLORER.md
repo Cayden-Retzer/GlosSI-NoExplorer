@@ -23,6 +23,21 @@ cleanup if a *new* GlosSITarget instance has taken over (same as the old DLL did
 
 GlosSIConfig is unchanged and never needed explorer; keep your installed copy.
 
+## Steam on-screen keyboard passthrough
+
+GlosSITarget detours `GetForegroundWindow` so Steam keeps the shortcut's controller
+config. A side effect is that Steam's on-screen keyboard (Show Keyboard / Xbox + X)
+types into GlosSITarget's invisible window instead of the launched app, so nothing
+shows up in e.g. Discord's message box.
+
+GlosSITarget now forwards that text (plus Enter, Backspace, Tab, arrows, Home/End,
+PgUp/PgDn, Delete and Ctrl+letter) to the real foreground window with `SendInput`.
+If GlosSITarget itself has focus (the Steam overlay pulled it over), the input is
+queued and sent when focus goes back to the app. Nothing is forwarded while the
+GlosSI overlay is open.
+
+On by default; disable per shortcut with `"window": { "forwardKeyboardInput": false }`.
+
 ## Automatic Steam artwork and icons
 
 Same idea as SteamLaunchHelper. Each time a GlosSI shortcut starts, GlosSIWatchdog

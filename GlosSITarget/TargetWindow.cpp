@@ -189,11 +189,21 @@ void TargetWindow::update()
     sf::Event event{};
     while (window_.pollEvent(event)) {
         Overlay::ProcessEvent(event);
+#ifdef _WIN32
+        // Text from Steam's on-screen keyboard lands here; hand it to the launched app
+        // (but not while the GlosSI overlay itself wants keyboard input).
+        if (Settings::window.forwardKeyboardInput && !(overlay_ && overlay_->isEnabled())) {
+            keyboard_passthrough_.onEvent(event);
+        }
+#endif
         if (event.type == sf::Event::Closed) {
             close();
             return;
         }
     }
+#ifdef _WIN32
+    keyboard_passthrough_.flush(window_.getSystemHandle());
+#endif
     // windows clear always handled in overlay. => non fully transparent
     window_.clear(sf::Color(0, 0, 0, 0));
     screenShotWorkaround();

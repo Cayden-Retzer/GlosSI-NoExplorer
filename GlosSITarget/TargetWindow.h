@@ -23,6 +23,7 @@ limitations under the License.
 // Redfine window handle, should impl. change
 #ifdef _WIN32
 #include <Windows.h>
+#include "KeyboardPassthrough.h"
 using WindowHandle = HWND;
 #else
 using WindowHandle = int; // ???
@@ -85,4 +86,8 @@ class TargetWindow {
 
     bool toggle_window_mode_after_frame_ = false;
     bool toggle_hidealttab_after_frame_ = false;
+
+#ifdef _WIN32
+    KeyboardPassthrough keyboard_passthrough_;
+#endif
 };

@@ -62,6 +62,7 @@ namespace Settings
         bool hideAltTab = true;
         bool disableGlosSIOverlay = false;
         bool opaqueSteamOverlay = false;
+        bool forwardKeyboardInput = true;
     } window;
 
     inline struct Controller
@@ -227,6 +228,7 @@ namespace Settings
                 safeParseValue(winconf, "hideAltTab", window.hideAltTab);
                 safeParseValue(winconf, "disableGlosSIOverlay", window.disableGlosSIOverlay);
                 safeParseValue(winconf, "opaqueSteamOverlay", window.opaqueSteamOverlay);
+                safeParseValue(winconf, "forwardKeyboardInput", window.forwardKeyboardInput);
             }
 
             if (const auto controllerConf = json["controller"]; !controllerConf.is_null() && !controllerConf.empty() && controllerConf.is_object())
@@ -345,6 +347,7 @@ namespace Settings
         json["window"]["disableOverlay"] = window.disableOverlay;
         json["window"]["hideAltTab"] = window.hideAltTab;
         json["window"]["opaqueSteamOverlay"] = window.opaqueSteamOverlay;
+        json["window"]["forwardKeyboardInput"] = window.forwardKeyboardInput;
         json["controller"]["maxControllers"] = controller.maxControllers;
         json["controller"]["allowDesktopConfig"] = controller.allowDesktopConfig;
         json["controller"]["emulateDS4"] = controller.emulateDS4;
