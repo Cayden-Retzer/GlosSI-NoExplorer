@@ -36,6 +36,7 @@ limitations under the License.
 #include "../common/steam_util.h"
 
 #ifdef _WIN32
+#include "ArtworkFetcher.h"
 class TrayIcon;
 #else
 namespace Tray {
@@ -98,6 +99,9 @@ class SteamTarget {
     std::weak_ptr<Overlay> overlay_;
     SteamOverlayDetector detector_;
     AppLauncher launcher_;
+#ifdef _WIN32
+    ArtworkFetcher artwork_;
+#endif
     HttpServer server_;
     WindowHandle last_foreground_window_ = nullptr;
     static inline WindowHandle target_window_handle_ = nullptr;

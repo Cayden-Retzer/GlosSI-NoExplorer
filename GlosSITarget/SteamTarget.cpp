@@ -232,6 +232,7 @@ int SteamTarget::run()
         frame_time_clock.restart();
     }
 #ifdef _WIN32
+    artwork_.stop();
     tray.reset();
 #else
     tray->exit();
@@ -421,6 +422,9 @@ Application will not function!");
     else {
         spdlog::info("Watchdog disabled via -disablewatchdog");
     }
+
+    // Fill in missing Steam library artwork from SteamGridDB (opt-in via API key in GlosSIConfig)
+    artwork_.start();
 
     // The UWP overlay enabler (another DLL injected into explorer.exe) was removed.
     // "-disableuwpoverlay" is still accepted but has no effect anymore.
