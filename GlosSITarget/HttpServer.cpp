@@ -49,7 +49,7 @@ void HttpServer::run()
         res.set_header("Access-Control-Allow-Origin", "*");
     };
 
-    server_.Get("/", [this, &setCorsHeader](const httplib::Request& req, httplib::Response& res) {
+    server_.Get("/", [this, setCorsHeader](const httplib::Request& req, httplib::Response& res) {
         setCorsHeader(res);
 
         auto content_json = nlohmann::json{
@@ -89,12 +89,17 @@ void HttpServer::run()
             }
         })();
 
-        (server_.*fn)(e.path, [this, &e, &setCorsHeader](const httplib::Request& req, httplib::Response& res) {
+        (server_.*fn)(e.path, [this, e, setCorsHeader](const httplib::Request& req, httplib::Response& res) {
             setCorsHeader(res);
             res.status = 0;
             res.content_length_ = 0;
             try {
                 e.handler(req, res);
+                // Handlers that don't set a status mean success. Leaving it at 0 produced
+                // an invalid "HTTP/1.1 0" status line that every client rejects.
+                if (res.status == 0) {
+                    res.status = 200;
+                }
             }
             catch (std::exception& err) {
                 spdlog::error("Exception in http handler: {}", err.what());
@@ -122,7 +127,7 @@ void HttpServer::run()
         });
     }
 
-    server_.Post("/quit", [this, &setCorsHeader](const httplib::Request& req, httplib::Response& res) {
+    server_.Post("/quit", [this, setCorsHeader](const httplib::Request& req, httplib::Response& res) {
         setCorsHeader(res);
         close_();
     });

@@ -15,6 +15,7 @@ shell isn't running (and keeps working if you start/stop explorer while it runs)
 | Unhooking Steam's `CreateProcessW` hook wrote 8 bytes cached by GlosSIConfig; stale after Windows updates (or too short for 14-byte hooks) → access violation when launching the app | Original bytes are read from the DLL file on disk (only if it is the exact loaded build and the range has no relocations); cached/fallback bytes are only used otherwise |
 | Steam library artwork and icons had to be set manually | The watchdog fills in missing artwork (SteamGridDB) and the app icon (see below) |
 | A launch path pasted with quotes ("Copy as path") failed to launch | Surrounding quotes are ignored |
+| GlosSITarget's HTTP API answered `HTTP/1.1 0` (invalid) for most endpoints, so the watchdog never got settings or launched PIDs | Successful handlers answer `200` |
 | `deps/subhook` pointed at `github.com/Zeex/subhook` (deleted) | Points at `github.com/tianocore/edk2-subhook`, which has the identical pinned commit |
 
 The watchdog now waits on GlosSITarget's process handle (`--pid`), and skips

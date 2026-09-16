@@ -178,7 +178,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         return PidOfTargetWindow() == target_pid;
     };
 
-    httplib::Client http_client("http://localhost:8756");
+    // GlosSITarget's server listens on IPv4 only; "localhost" may try ::1 first
+    httplib::Client http_client("http://127.0.0.1:8756");
     fetchSettings(http_client);
 
     // Steam library icon + artwork for this shortcut; runs here so it can't block GlosSITarget
