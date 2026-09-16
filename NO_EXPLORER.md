@@ -38,6 +38,16 @@ GlosSI overlay is open.
 
 On by default; disable per shortcut with `"window": { "forwardKeyboardInput": false }`.
 
+## Cursor parking in Big Picture
+
+Big Picture on Windows keeps showing the mouse cursor once it has been used, even while
+navigating with a controller. When focus moves from the launched app (or GlosSI's own
+window) to a full-screen Steam window, GlosSITarget moves the cursor to that monitor's
+bottom-right corner. When the launched app gets focus again and the cursor hasn't been
+moved, it goes back to where it was.
+
+On by default; disable per shortcut with `"window": { "parkCursorInSteam": false }`.
+
 ## Automatic Steam artwork and icons
 
 Same idea as SteamLaunchHelper. Each time a GlosSI shortcut starts, GlosSIWatchdog

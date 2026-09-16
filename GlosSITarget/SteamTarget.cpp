@@ -205,6 +205,11 @@ int SteamTarget::run()
         overlayHotkeyWorkaround();
         window_.update();
 #ifdef _WIN32
+        if (Settings::window.parkCursorInSteam && fully_initialized_ && !delayed_shutdown_) {
+            cursor_parker_.update(target_window_handle_, force_config_hwnds_);
+        }
+#endif
+#ifdef _WIN32
         if (tray) {
             tray->update();
         }
