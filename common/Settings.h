@@ -68,7 +68,9 @@ namespace Settings
         // and grabbing focus keeps Big Picture from ever getting it back (visible cursor, stuck input).
         bool focusOnSteamOverlay = false;
         // Hide the mouse cursor (system-wide) while the Steam overlay / Big Picture menu is open.
-        bool hideCursorInSteamOverlay = true;
+        // Off by default: with ImGui-SFML no longer forcing a cursor on our window, Steam manages
+        // the cursor itself (shown on mouse movement, hidden on controller input).
+        bool hideCursorInSteamOverlay = false;
     } window;
 
     inline struct Controller

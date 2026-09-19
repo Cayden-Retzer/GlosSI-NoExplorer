@@ -70,9 +70,11 @@ windows: you browse Steam in the overlay while the cursor still sits over the la
 which keeps showing it. GlosSITarget therefore blanks the system cursors while the Steam overlay
 is open and restores them (`SPI_SETCURSORS`) when it closes, when the mouse is moved, on
 shutdown, and at the next start. GlosSIWatchdog also restores them if GlosSITarget dies.
-While the menu is open it follows Steam's own behaviour: moving the mouse brings the cursor back,
-using the controller hides it again (gamepad input is read straight from XInput).
-Disable per shortcut with `"window": { "hideCursorInSteamOverlay": false }`.
+This is **off by default** now: ImGui-SFML used to set an arrow cursor on GlosSI's window every
+frame, which is what kept a cursor on screen; with that suppressed (unless GlosSI's own overlay is
+up), Steam manages the cursor itself. Turn the blanking back on per shortcut with
+`"window": { "hideCursorInSteamOverlay": true }`; it then follows Steam's behaviour (mouse shows
+the cursor, controller hides it, gamepad input read straight from XInput).
 
 **Window state.** GlosSITarget's invisible full-screen window is switched between three states
 (`SteamTarget::updateWindowState`, re-checked every 250 ms):

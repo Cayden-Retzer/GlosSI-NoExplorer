@@ -155,6 +155,17 @@ bool Overlay::toggle()
 
 void Overlay::update()
 {
+    // ImGui-SFML sets the OS cursor for our window on every frame. While GlosSI's own overlay
+    // isn't up, that arrow is drawn on top of whatever Steam's overlay wants to show (and can't
+    // be hidden when navigating with a controller), so leave the cursor to Steam then.
+    ImGuiIO& cursor_io = ImGui::GetIO();
+    if (enabled_ || force_enable_) {
+        cursor_io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+    }
+    else {
+        cursor_io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    }
+
     ImGui::SFML::Update(window_, update_clock_.restart());
 
     if (!enabled_ && !force_enable_ && time_since_start_clock_.getElapsedTime().asSeconds() < SPLASH_DURATION_S_) {

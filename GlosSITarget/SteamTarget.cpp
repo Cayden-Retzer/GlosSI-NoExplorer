@@ -468,8 +468,8 @@ void SteamTarget::onOverlayChanged(bool overlay_open)
 #endif
     const bool take_focus = Settings::window.focusOnSteamOverlay || Settings::window.windowMode;
 #ifdef _WIN32
-    if (Settings::window.hideCursorInSteamOverlay && !Settings::window.windowMode) {
-        cursor_hider_.setSteamMenuOpen(overlay_open);
+    if (!Settings::window.windowMode) {
+        cursor_hider_.setSteamMenuOpen(overlay_open, Settings::window.hideCursorInSteamOverlay);
     }
 #endif
     // Click-through and z-order are handled by updateWindowState(); only focus and the

@@ -16,6 +16,7 @@ limitations under the License.
 #ifdef _WIN32
 #include <Windows.h>
 
+#include <SFML/System/Clock.hpp>
 #include <spdlog/spdlog.h>
 
 #include <array>
@@ -76,11 +77,13 @@ class CursorHider {
         }
     }
 
-    // The Steam menu (overlay) opened or closed.
-    void setSteamMenuOpen(bool open)
+    // The Steam menu (overlay) opened or closed. With `blank_cursor` false the cursor is left
+    // to Steam; the open/closed state is still tracked so the trace log keeps working.
+    void setSteamMenuOpen(bool open, bool blank_cursor)
     {
         menu_open_ = open;
-        if (open) {
+        blank_cursor_ = blank_cursor;
+        if (open && blank_cursor) {
             hide();
         }
         else {
@@ -99,6 +102,11 @@ class CursorHider {
         if (!GetCursorPos(&pos)) {
             return;
         }
+        if (report_clock_.getElapsedTime().asSeconds() >= 1.f) {
+            report_clock_.restart();
+            spdlog::trace("Cursor hider: Steam menu open, cursor at {},{} ({}), controller {}", pos.x, pos.y,
+                          hidden_ ? "blanked" : "normal", controller_used ? "in use" : "idle");
+        }
         // Compare against the position from the last hide/show, not the last tick: this loop runs
         // every frame, so per-tick deltas of a normal mouse movement never reach the threshold.
         const bool mouse_moved = std::abs(pos.x - anchor_pos_.x) > MOVE_THRESHOLD_PX ||
@@ -111,7 +119,7 @@ class CursorHider {
             }
             return; // mouse wins this round; the controller can hide it again next time
         }
-        if (controller_used && !hidden_) {
+        if (controller_used && !hidden_ && blank_cursor_) {
             spdlog::debug("Cursor hider: controller used, hiding cursor again");
             hide();
         }
@@ -133,6 +141,8 @@ class CursorHider {
 
     bool hidden_ = false;
     bool menu_open_ = false;
+    bool blank_cursor_ = false;
+    sf::Clock report_clock_;
     POINT anchor_pos_{};
 
     static HCURSOR createBlankCursor()
