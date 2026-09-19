@@ -22,6 +22,7 @@ limitations under the License.
 
 #ifdef _WIN32
 #include "../common/HidHide.h"
+#include "CursorHider.h"
 #include "InputRedirector.h"
 #include <subhook.h>
 #endif
@@ -106,6 +107,8 @@ class SteamTarget {
     HWND last_app_window_ = nullptr;
     sf::Clock focus_check_clock_;
     int own_focus_count_ = 0;
+
+    CursorHider cursor_hider_;
 #endif
     TargetWindow window_;
     std::weak_ptr<Overlay> overlay_;

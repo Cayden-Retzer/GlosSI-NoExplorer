@@ -65,6 +65,15 @@ click-through; if Steam hands focus to GlosSI's window (e.g. "Resume game"), Glo
 on to the launched app. Restore the upstream behaviour per shortcut with
 `"window": { "focusOnSteamOverlay": true }`.
 
+**Cursor while in the Steam menu.** Opening the Steam menu over a GlosSI shortcut doesn't switch
+windows: you browse Steam in the overlay while the cursor still sits over the launched app,
+which keeps showing it. GlosSITarget therefore blanks the system cursors while the Steam overlay
+is open and restores them (`SPI_SETCURSORS`) when it closes, when the mouse is moved, on
+shutdown, and at the next start. GlosSIWatchdog also restores them if GlosSITarget dies.
+Disable per shortcut with `"window": { "hideCursorInSteamOverlay": false }`.
+If the cursor is ever stuck invisible, run:
+`Add-Type -Name C -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint a, uint b, System.IntPtr c, uint d);'; [W.C]::SystemParametersInfo(0x57, 0, [IntPtr]::Zero, 0)`
+
 ## Automatic Steam artwork and icons
 
 Same idea as SteamLaunchHelper. Each time a GlosSI shortcut starts, GlosSIWatchdog

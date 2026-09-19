@@ -231,6 +231,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         HidHide hidhide;
         hidhide.disableHidHide();
 
+        // GlosSITarget blanks the cursor while the Steam overlay is open; make sure it comes back.
+        if (!SystemParametersInfoW(SPI_SETCURSORS, 0, nullptr, 0)) {
+            spdlog::warn("Couldn't restore mouse cursors (error {})", GetLastError());
+        }
+
         if (Settings::launch.closeOnExit) {
             spdlog::info("Closing launched processes");
             for (const auto pid : pids) {

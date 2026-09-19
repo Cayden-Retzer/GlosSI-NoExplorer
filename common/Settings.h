@@ -67,6 +67,8 @@ namespace Settings
         // Off by default in this fork: with Big Picture as the shell the overlay is controller-driven,
         // and grabbing focus keeps Big Picture from ever getting it back (visible cursor, stuck input).
         bool focusOnSteamOverlay = false;
+        // Hide the mouse cursor (system-wide) while the Steam overlay / Big Picture menu is open.
+        bool hideCursorInSteamOverlay = true;
     } window;
 
     inline struct Controller
@@ -234,6 +236,7 @@ namespace Settings
                 safeParseValue(winconf, "opaqueSteamOverlay", window.opaqueSteamOverlay);
                 safeParseValue(winconf, "forwardKeyboardInput", window.forwardKeyboardInput);
                 safeParseValue(winconf, "focusOnSteamOverlay", window.focusOnSteamOverlay);
+                safeParseValue(winconf, "hideCursorInSteamOverlay", window.hideCursorInSteamOverlay);
             }
 
             if (const auto controllerConf = json["controller"]; !controllerConf.is_null() && !controllerConf.empty() && controllerConf.is_object())
@@ -354,6 +357,7 @@ namespace Settings
         json["window"]["opaqueSteamOverlay"] = window.opaqueSteamOverlay;
         json["window"]["forwardKeyboardInput"] = window.forwardKeyboardInput;
         json["window"]["focusOnSteamOverlay"] = window.focusOnSteamOverlay;
+        json["window"]["hideCursorInSteamOverlay"] = window.hideCursorInSteamOverlay;
         json["controller"]["maxControllers"] = controller.maxControllers;
         json["controller"]["allowDesktopConfig"] = controller.allowDesktopConfig;
         json["controller"]["emulateDS4"] = controller.emulateDS4;

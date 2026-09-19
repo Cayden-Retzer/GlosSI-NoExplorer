@@ -241,6 +241,7 @@ int SteamTarget::run()
 #ifdef _WIN32
         enforceClickThrough();
         handFocusToApp();
+        cursor_hider_.update();
 #endif
 #ifdef _WIN32
         if (tray) {
@@ -284,6 +285,7 @@ int SteamTarget::run()
     // Windows would otherwise swap it for a white "not responding" window over everything.
     window_.hide();
     ReleaseCapture();
+    cursor_hider_.show();
     startShutdownTimeout(std::chrono::seconds(10));
     shutdownStep("removing tray icon");
     tray.reset();
@@ -416,6 +418,16 @@ void SteamTarget::onOverlayChanged(bool overlay_open)
     steam_overlay_open_ = overlay_open;
 #endif
     const bool take_focus = Settings::window.focusOnSteamOverlay || Settings::window.windowMode;
+#ifdef _WIN32
+    if (Settings::window.hideCursorInSteamOverlay && !Settings::window.windowMode) {
+        if (overlay_open) {
+            cursor_hider_.hide();
+        }
+        else {
+            cursor_hider_.show();
+        }
+    }
+#endif
     if (overlay_open) {
         if (take_focus) {
             focusWindow(target_window_handle_);
@@ -635,6 +647,10 @@ Application will not function!");
         steam_tweaks_.setAutoInject(true);
     }
 
+#ifdef _WIN32
+    // In case a previous GlosSITarget died while the cursor was hidden.
+    CursorHider::RestoreSystemCursors();
+#endif
     fully_initialized_ = true;
 }
 
