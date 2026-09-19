@@ -74,12 +74,19 @@ While the menu is open it follows Steam's own behaviour: moving the mouse brings
 using the controller hides it again (gamepad input is read straight from XInput).
 Disable per shortcut with `"window": { "hideCursorInSteamOverlay": false }`.
 
-**Steam dialogs.** GlosSITarget's window is always-on-top, so Steam's own windows (the "where do
-you want to install this" dialog, for example) would open *behind* it, under a frozen image of
-the overlay - the UI looks stuck while it's really responding underneath. Whenever a window other
-than the launched app has focus, GlosSITarget sends its window to the bottom of the z-order
-(`HWND_NOTOPMOST` isn't enough: that still leaves it above every normal window) and keeps pushing
-it down, because Steam's overlay raises it again. It goes back on top when the app has focus.
+**Window state.** GlosSITarget's invisible full-screen window is switched between three states
+(`SteamTarget::updateWindowState`, re-checked every 250 ms):
+
+| what's in front | z-order | input |
+|---|---|---|
+| another window (Big Picture, a Steam dialog, ...) | bottom | click-through |
+| launched app, Steam overlay open | topmost | takes input (mouse drives the Steam menu) |
+| launched app, no overlay | topmost | click-through |
+
+Sending it to the *bottom* matters: `HWND_NOTOPMOST` would still leave it above every normal
+window, so Steam's dialogs stayed hidden behind it under a frozen image of the overlay. Steam's
+overlay also raises the window by itself, so the state is re-applied rather than only set on
+change.
 If the cursor is ever stuck invisible, run:
 `Add-Type -Name C -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint a, uint b, System.IntPtr c, uint d);'; [W.C]::SystemParametersInfo(0x57, 0, [IntPtr]::Zero, 0)`
 

@@ -96,10 +96,11 @@ class SteamTarget {
     HidHide hidhide_;
     InputRedirector input_redirector_;
 
-    // Make our window click-through again if something else is in front while it still takes input.
-    void enforceClickThrough();
-    sf::Clock click_through_check_clock_;
-    int click_through_mismatch_count_ = 0;
+    // Keeps the window's click-through state and z-order in step with what's in front.
+    void updateWindowState();
+    sf::Clock window_state_clock_;
+    int state_change_count_ = 0;
+    bool other_in_front_ = false;
 
     // With focusOnSteamOverlay off: if Steam activates our window (e.g. "Resume game"),
     // hand focus to the launched app instead of keeping it on our invisible window.
@@ -112,13 +113,6 @@ class SteamTarget {
     CursorHider cursor_hider_;
     ControllerActivity controller_activity_;
 
-    // Our always-on-top window covers Steam's own windows (e.g. the "where to install" dialog),
-    // showing a frozen overlay image over them. Drop out of the topmost band while another
-    // window has focus.
-    void manageZOrder();
-    sf::Clock zorder_check_clock_;
-    int zorder_mismatch_count_ = 0;
-    bool want_topmost_ = true;
 #endif
     TargetWindow window_;
     std::weak_ptr<Overlay> overlay_;

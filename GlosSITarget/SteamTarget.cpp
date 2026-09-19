@@ -241,9 +241,8 @@ int SteamTarget::run()
         overlayHotkeyWorkaround();
         window_.update();
 #ifdef _WIN32
-        enforceClickThrough();
+        updateWindowState();
         handFocusToApp();
-        manageZOrder();
         cursor_hider_.update(controller_activity_.poll());
 #endif
 #ifdef _WIN32
@@ -356,76 +355,62 @@ HWND realForegroundWindow()
 #endif
 
 #ifdef _WIN32
-void SteamTarget::enforceClickThrough()
+void SteamTarget::updateWindowState()
 {
-    // GlosSI's window should only take input while the Steam overlay is open over the launched app.
-    // If the overlay detector still thinks the overlay is open but another window (e.g. Big Picture)
-    // is really in front, our invisible full-screen window would swallow every click.
+    // Three states for our invisible full-screen window:
+    //  - another window (Big Picture, a Steam dialog, ...) has focus:
+    //      click-through and at the back, so that window is visible and usable.
+    //  - the Steam overlay is open over the launched app:
+    //      on top and taking input, so the mouse can drive the Steam menu drawn into our window.
+    //  - otherwise: on top and click-through, so the launched app gets everything.
     if (Settings::window.windowMode || !steam_overlay_present_ || !fully_initialized_) {
         return;
     }
-    if (click_through_check_clock_.getElapsedTime().asMilliseconds() < 250) {
+    if (window_state_clock_.getElapsedTime().asMilliseconds() < 250) {
         return;
     }
-    click_through_check_clock_.restart();
+    window_state_clock_.restart();
 
-    const bool glossi_overlay_open = !overlay_.expired() && overlay_.lock()->isEnabled();
-    const HWND fg = realForegroundWindow();
-    if (window_.isClickThrough() || glossi_overlay_open || fg == nullptr || fg == target_window_handle_) {
-        click_through_mismatch_count_ = 0;
-        return;
+    if (!overlay_.expired() && overlay_.lock()->isEnabled()) {
+        return; // GlosSI's own overlay sets the window up itself
     }
-    if (++click_through_mismatch_count_ < 3) { // ~0.75 s, let focus changes settle
-        return;
-    }
-    click_through_mismatch_count_ = 0;
-    spdlog::info("Window {:#x} is in front but GlosSI's window still takes input; making it click-through again",
-                 reinterpret_cast<uint64_t>(fg));
-    window_.setClickThrough(true);
-    ReleaseCapture();
-}
-#endif
-
-#ifdef _WIN32
-void SteamTarget::manageZOrder()
-{
-    if (Settings::window.windowMode || !steam_overlay_present_ || !fully_initialized_) {
-        return;
-    }
-    if (zorder_check_clock_.getElapsedTime().asMilliseconds() < 250) {
-        return;
-    }
-    zorder_check_clock_.restart();
 
     const HWND fg = realForegroundWindow();
-    // Stay on top over the launched app (that's where the Steam overlay has to draw), but get out
-    // of the way of any other window that has focus, e.g. a Steam dialog.
-    const bool want_topmost = fg == nullptr || fg == target_window_handle_ ||
-                              std::ranges::find(force_config_hwnds_, fg) != force_config_hwnds_.end();
-    if (want_topmost != want_topmost_) {
-        if (++zorder_mismatch_count_ < 2) { // ~0.5 s, let focus changes settle
+    const bool other_in_front = fg != nullptr && fg != target_window_handle_ &&
+                                std::ranges::find(force_config_hwnds_, fg) == force_config_hwnds_.end();
+    if (other_in_front != other_in_front_) {
+        if (++state_change_count_ < 2) { // ~0.5 s, let focus changes settle
             return;
         }
-        zorder_mismatch_count_ = 0;
-        want_topmost_ = want_topmost;
-        if (want_topmost) {
-            spdlog::info("Launched app is in front again; putting GlosSI's window back on top");
+        state_change_count_ = 0;
+        other_in_front_ = other_in_front;
+        if (other_in_front) {
+            spdlog::info("{} is in front; GlosSI's window moves to the back and stops taking input",
+                         describeWindow(fg));
         }
         else {
-            spdlog::info("{} is in front; moving GlosSI's window to the back", describeWindow(fg));
+            spdlog::info("Launched app is in front again; GlosSI's window goes back on top");
+        }
+    }
+    else {
+        state_change_count_ = 0;
+    }
+
+    const bool want_click_through = other_in_front_ || !steam_overlay_open_;
+    const bool want_topmost = !other_in_front_;
+
+    if (window_.isClickThrough() != want_click_through) {
+        spdlog::debug("GlosSI's window now {} mouse input", want_click_through ? "passes through" : "takes");
+        window_.setClickThrough(want_click_through); // re-applies topmost, so fix z-order after this
+        if (want_click_through) {
+            ReleaseCapture();
+        }
+    }
+    if (window_.isTopmost() != want_topmost) {
+        if (!want_topmost) {
+            spdlog::debug("Something raised GlosSI's window again; moving it back down");
         }
         window_.setTopmost(want_topmost);
-        return;
-    }
-    zorder_mismatch_count_ = 0;
-    // Steam's overlay puts our window back on top by itself, so keep pushing it down
-    // for as long as another window is in front.
-    if (!want_topmost_ && window_.isTopmost()) {
-        spdlog::debug("Something raised GlosSI's window again; moving it back down");
-        window_.setTopmost(false);
-    }
-    else if (want_topmost_ && !window_.isTopmost()) {
-        window_.setTopmost(true);
     }
 }
 
@@ -487,27 +472,18 @@ void SteamTarget::onOverlayChanged(bool overlay_open)
         cursor_hider_.setSteamMenuOpen(overlay_open);
     }
 #endif
+    // Click-through and z-order are handled by updateWindowState(); only focus and the
+    // opaque-overlay option are dealt with here.
     if (overlay_open) {
         if (take_focus) {
             focusWindow(target_window_handle_);
-            window_.setClickThrough(!overlay_open);
-        }
-        else {
-            spdlog::debug("Overlay opened; staying click-through and leaving focus alone (focusOnSteamOverlay is off)");
         }
         if (!Settings::window.windowMode && Settings::window.opaqueSteamOverlay) {
             window_.setTransparent(false);
         }
     }
     else {
-        if (!take_focus) {
-            spdlog::debug("Overlay closed; leaving focus alone (focusOnSteamOverlay is off)");
-            if (!Settings::window.windowMode && Settings::window.opaqueSteamOverlay) {
-                window_.setTransparent(true);
-            }
-        }
-        else if (!(overlay_.expired() ? false : overlay_.lock()->isEnabled())) {
-            window_.setClickThrough(!overlay_open);
+        if (take_focus && !(overlay_.expired() ? false : overlay_.lock()->isEnabled())) {
 #ifdef _WIN32
             const bool still_focused = realForegroundWindow() == target_window_handle_;
 #else
@@ -517,17 +493,11 @@ void SteamTarget::onOverlayChanged(bool overlay_open)
                 focusWindow(last_foreground_window_);
             }
             else {
-                // Something else (e.g. Big Picture via the Steam menu) took the foreground while
-                // the overlay was open. Don't yank the launched app back in front of it,
-                // just make sure our invisible window isn't holding on to the mouse.
-#ifdef _WIN32
-                ReleaseCapture();
-#endif
                 spdlog::debug("Overlay closed; another window already has focus, not refocusing launched app");
             }
-            if (!Settings::window.windowMode && Settings::window.opaqueSteamOverlay) {
-                window_.setTransparent(true);
-            }
+        }
+        if (!Settings::window.windowMode && Settings::window.opaqueSteamOverlay) {
+            window_.setTransparent(true);
         }
     }
     if (!overlay_trigger_flag_) {
