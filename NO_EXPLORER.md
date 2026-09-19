@@ -76,9 +76,10 @@ Disable per shortcut with `"window": { "hideCursorInSteamOverlay": false }`.
 
 **Steam dialogs.** GlosSITarget's window is always-on-top, so Steam's own windows (the "where do
 you want to install this" dialog, for example) would open *behind* it, under a frozen image of
-the overlay - the UI looks stuck while it's really responding underneath. GlosSITarget now leaves
-the topmost band whenever a window other than the launched app has focus, and goes back on top
-when the app does.
+the overlay - the UI looks stuck while it's really responding underneath. Whenever a window other
+than the launched app has focus, GlosSITarget sends its window to the bottom of the z-order
+(`HWND_NOTOPMOST` isn't enough: that still leaves it above every normal window) and keeps pushing
+it down, because Steam's overlay raises it again. It goes back on top when the app has focus.
 If the cursor is ever stuck invisible, run:
 `Add-Type -Name C -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint a, uint b, System.IntPtr c, uint d);'; [W.C]::SystemParametersInfo(0x57, 0, [IntPtr]::Zero, 0)`
 

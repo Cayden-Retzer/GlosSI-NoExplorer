@@ -36,6 +36,8 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <format>
+#include <string>
 #include <thread>
 
 namespace {
@@ -320,6 +322,25 @@ int SteamTarget::run()
 
 #ifdef _WIN32
 namespace {
+std::string describeWindow(HWND hwnd)
+{
+    if (hwnd == nullptr) {
+        return "(none)";
+    }
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    std::wstring title(256, L'\0');
+    title.resize(GetWindowTextW(hwnd, title.data(), static_cast<int>(title.size())));
+    try {
+        return std::format("{:#x} {} \"{}\"", reinterpret_cast<uint64_t>(hwnd),
+                           util::string::to_string(util::win::process::GetProcName(pid)),
+                           util::string::to_string(title));
+    }
+    catch (...) {
+        return std::format("{:#x}", reinterpret_cast<uint64_t>(hwnd));
+    }
+}
+
 // GetForegroundWindow is detoured in this process (keepControllerConfig),
 // so ask the foreground GUI thread for the real active window instead.
 HWND realForegroundWindow()
@@ -381,22 +402,31 @@ void SteamTarget::manageZOrder()
     // of the way of any other window that has focus, e.g. a Steam dialog.
     const bool want_topmost = fg == nullptr || fg == target_window_handle_ ||
                               std::ranges::find(force_config_hwnds_, fg) != force_config_hwnds_.end();
-    if (want_topmost == window_.isTopmost()) {
+    if (want_topmost != want_topmost_) {
+        if (++zorder_mismatch_count_ < 2) { // ~0.5 s, let focus changes settle
+            return;
+        }
         zorder_mismatch_count_ = 0;
-        return;
-    }
-    if (++zorder_mismatch_count_ < 2) { // ~0.5 s, let focus changes settle
+        want_topmost_ = want_topmost;
+        if (want_topmost) {
+            spdlog::info("Launched app is in front again; putting GlosSI's window back on top");
+        }
+        else {
+            spdlog::info("{} is in front; moving GlosSI's window to the back", describeWindow(fg));
+        }
+        window_.setTopmost(want_topmost);
         return;
     }
     zorder_mismatch_count_ = 0;
-    if (want_topmost) {
-        spdlog::info("Launched app is in front again; putting GlosSI's window back on top");
+    // Steam's overlay puts our window back on top by itself, so keep pushing it down
+    // for as long as another window is in front.
+    if (!want_topmost_ && window_.isTopmost()) {
+        spdlog::debug("Something raised GlosSI's window again; moving it back down");
+        window_.setTopmost(false);
     }
-    else {
-        spdlog::info("Window {:#x} is in front; moving GlosSI's window out of the always-on-top band",
-                     reinterpret_cast<uint64_t>(fg));
+    else if (want_topmost_ && !window_.isTopmost()) {
+        window_.setTopmost(true);
     }
-    window_.setTopmost(want_topmost);
 }
 
 void SteamTarget::handFocusToApp()

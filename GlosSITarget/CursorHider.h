@@ -43,7 +43,7 @@ class CursorHider {
         if (hidden_) {
             return;
         }
-        GetCursorPos(&last_pos_);
+        GetCursorPos(&anchor_pos_);
         size_t replaced = 0;
         for (const auto id : CURSOR_IDS) {
             const HCURSOR blank = createBlankCursor();
@@ -67,7 +67,7 @@ class CursorHider {
             return;
         }
         hidden_ = false;
-        GetCursorPos(&last_pos_);
+        GetCursorPos(&anchor_pos_);
         if (RestoreSystemCursors()) {
             spdlog::debug("Cursor hider: cursor restored");
         }
@@ -99,10 +99,12 @@ class CursorHider {
         if (!GetCursorPos(&pos)) {
             return;
         }
-        const bool mouse_moved = std::abs(pos.x - last_pos_.x) > MOVE_THRESHOLD_PX ||
-                                 std::abs(pos.y - last_pos_.y) > MOVE_THRESHOLD_PX;
-        last_pos_ = pos;
+        // Compare against the position from the last hide/show, not the last tick: this loop runs
+        // every frame, so per-tick deltas of a normal mouse movement never reach the threshold.
+        const bool mouse_moved = std::abs(pos.x - anchor_pos_.x) > MOVE_THRESHOLD_PX ||
+                                 std::abs(pos.y - anchor_pos_.y) > MOVE_THRESHOLD_PX;
         if (mouse_moved) {
+            anchor_pos_ = pos;
             if (hidden_) {
                 spdlog::debug("Cursor hider: mouse moved, showing cursor again");
                 show();
@@ -131,7 +133,7 @@ class CursorHider {
 
     bool hidden_ = false;
     bool menu_open_ = false;
-    POINT last_pos_{};
+    POINT anchor_pos_{};
 
     static HCURSOR createBlankCursor()
     {

@@ -118,6 +118,7 @@ class SteamTarget {
     void manageZOrder();
     sf::Clock zorder_check_clock_;
     int zorder_mismatch_count_ = 0;
+    bool want_topmost_ = true;
 #endif
     TargetWindow window_;
     std::weak_ptr<Overlay> overlay_;

@@ -161,7 +161,9 @@ bool TargetWindow::isTopmost() const
 void TargetWindow::setTopmost(bool topmost) const
 {
 #ifdef _WIN32
-    SetWindowPos(window_.getSystemHandle(), topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+    // HWND_NOTOPMOST would still leave us above every other normal window, which is exactly
+    // the problem (a dialog opens behind our full-screen window), so go all the way down.
+    SetWindowPos(window_.getSystemHandle(), topmost ? HWND_TOPMOST : HWND_BOTTOM, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 #endif
 }
