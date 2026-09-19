@@ -149,6 +149,11 @@ void TargetWindow::setClickThrough(bool click_through)
 #endif
 }
 
+void TargetWindow::setCursorVisible(bool visible)
+{
+    window_.setMouseCursorVisible(visible);
+}
+
 bool TargetWindow::isTopmost() const
 {
 #ifdef _WIN32

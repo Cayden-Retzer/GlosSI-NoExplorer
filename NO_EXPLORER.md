@@ -65,16 +65,13 @@ click-through; if Steam hands focus to GlosSI's window (e.g. "Resume game"), Glo
 on to the launched app. Restore the upstream behaviour per shortcut with
 `"window": { "focusOnSteamOverlay": true }`.
 
-**Cursor while in the Steam menu.** Opening the Steam menu over a GlosSI shortcut doesn't switch
-windows: you browse Steam in the overlay while the cursor still sits over the launched app,
-which keeps showing it. GlosSITarget therefore blanks the system cursors while the Steam overlay
-is open and restores them (`SPI_SETCURSORS`) when it closes, when the mouse is moved, on
-shutdown, and at the next start. GlosSIWatchdog also restores them if GlosSITarget dies.
-This is **off by default** now: ImGui-SFML used to set an arrow cursor on GlosSI's window every
-frame, which is what kept a cursor on screen; with that suppressed (unless GlosSI's own overlay is
-up), Steam manages the cursor itself. Turn the blanking back on per shortcut with
-`"window": { "hideCursorInSteamOverlay": true }`; it then follows Steam's behaviour (mouse shows
-the cursor, controller hides it, gamepad input read straight from XInput).
+**Cursor while in the Steam menu.** Steam draws its own pointer while its menu is open and pins
+the OS cursor in place; SFML nevertheless answers `WM_SETCURSOR` for GlosSITarget's window with an
+arrow, so that parked arrow sat on screen the whole time. GlosSITarget now hides the OS cursor for
+its own window (no system-wide state) while the pointer stays parked, and shows it again as soon
+as the pointer actually moves. ImGui-SFML is also stopped from setting a cursor every frame unless
+GlosSI's own overlay is up. Disable per shortcut with
+`"window": { "hideCursorInSteamOverlay": false }`.
 
 **Window state.** GlosSITarget's invisible full-screen window is switched between three states
 (`SteamTarget::updateWindowState`, re-checked every 250 ms):

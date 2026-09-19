@@ -243,7 +243,7 @@ int SteamTarget::run()
 #ifdef _WIN32
         updateWindowState();
         handFocusToApp();
-        cursor_hider_.update(controller_activity_.poll());
+        cursor_hider_.update();
 #endif
 #ifdef _WIN32
         if (tray) {

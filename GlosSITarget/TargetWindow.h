@@ -42,6 +42,8 @@ class TargetWindow {
     void setClickThrough(bool click_through);
     bool isClickThrough() const;
     bool isTopmost() const;
+    // Hides/shows the OS cursor while it is over our window only (SFML's WM_SETCURSOR handling).
+    void setCursorVisible(bool visible);
     void setTopmost(bool topmost) const;
     // Hide the window without destroying it (used before shutdown cleanup).
     void hide() const;

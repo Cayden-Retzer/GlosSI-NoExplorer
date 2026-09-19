@@ -19,111 +19,71 @@ limitations under the License.
 #include <SFML/System/Clock.hpp>
 #include <spdlog/spdlog.h>
 
-#include <array>
 #include <cstdlib>
+#include <functional>
+#include <utility>
 
 /*
- * While you navigate Steam through the in-game Steam menu, the cursor sits over the launched
- * app's window (e.g. Discord), which keeps showing it; neither Big Picture nor the Steam overlay
- * can hide it there. CursorHider swaps the system cursors for blank ones and puts the user's
- * cursors back with SPI_SETCURSORS (which reloads them from the registry, so a restore always
- * works, even from another process; GlosSIWatchdog does that too if GlosSITarget dies).
+ * While the Steam menu (overlay) is open, Steam draws its own pointer and pins the OS cursor in
+ * place. SFML still answers WM_SETCURSOR for GlosSI's window with an arrow, so that pinned arrow
+ * stays on screen the whole time you navigate with a controller.
  *
- * While the Steam menu is open it follows Steam's own behaviour: moving the mouse brings the
- * cursor back, using the controller hides it again.
+ * CursorHider hides the OS cursor for GlosSI's window only (no system-wide state to restore) while
+ * the pointer is parked, and shows it again as soon as the pointer really moves, i.e. when Steam
+ * hands the mouse back. RestoreSystemCursors() stays for older builds that blanked the system
+ * cursors and might have been killed before restoring them.
  */
 class CursorHider {
   public:
-    CursorHider() = default;
-    CursorHider(const CursorHider&) = delete;
-    CursorHider& operator=(const CursorHider&) = delete;
-    ~CursorHider() { show(); }
-
-    void hide()
+    explicit CursorHider(std::function<void(bool)> set_cursor_visible)
+        : set_cursor_visible_(std::move(set_cursor_visible))
     {
-        if (hidden_) {
-            return;
-        }
-        GetCursorPos(&anchor_pos_);
-        size_t replaced = 0;
-        for (const auto id : CURSOR_IDS) {
-            const HCURSOR blank = createBlankCursor();
-            if (blank == nullptr) {
-                continue;
-            }
-            if (SetSystemCursor(blank, id)) { // takes ownership of `blank` on success
-                ++replaced;
-            }
-            else {
-                DestroyCursor(blank);
-            }
-        }
-        hidden_ = replaced > 0;
-        spdlog::debug("Cursor hider: hid cursor (replaced {}/{} system cursors)", replaced, CURSOR_IDS.size());
     }
 
-    void show()
-    {
-        if (!hidden_) {
-            return;
-        }
-        hidden_ = false;
-        GetCursorPos(&anchor_pos_);
-        if (RestoreSystemCursors()) {
-            spdlog::debug("Cursor hider: cursor restored");
-        }
-        else {
-            spdlog::warn("Cursor hider: restoring cursors failed (error {})", GetLastError());
-        }
-    }
-
-    // The Steam menu (overlay) opened or closed. With `blank_cursor` false the cursor is left
-    // to Steam; the open/closed state is still tracked so the trace log keeps working.
-    void setSteamMenuOpen(bool open, bool blank_cursor)
+    // The Steam menu (overlay) opened or closed.
+    void setSteamMenuOpen(bool open, bool hide_while_parked)
     {
         menu_open_ = open;
-        blank_cursor_ = blank_cursor;
-        if (open && blank_cursor) {
-            hide();
+        hide_while_parked_ = hide_while_parked;
+        GetCursorPos(&anchor_pos_);
+        parked_clock_.restart();
+        if (open && hide_while_parked) {
+            setHidden(true);
         }
         else {
-            show();
+            setHidden(false);
         }
     }
 
-    // Call regularly while the Steam menu is open: the mouse brings the cursor back,
-    // the controller hides it again.
-    void update(bool controller_used)
+    // Call once per frame.
+    void update()
     {
-        if (!menu_open_) {
+        if (!menu_open_ || !hide_while_parked_) {
             return;
         }
         POINT pos{};
         if (!GetCursorPos(&pos)) {
             return;
         }
+        const bool moved = std::abs(pos.x - anchor_pos_.x) > MOVE_THRESHOLD_PX ||
+                           std::abs(pos.y - anchor_pos_.y) > MOVE_THRESHOLD_PX;
+        if (moved) {
+            anchor_pos_ = pos;
+            parked_clock_.restart();
+            setHidden(false);
+        }
+        else if (!hidden_ && parked_clock_.getElapsedTime().asSeconds() >= PARKED_TIMEOUT_S) {
+            setHidden(true);
+        }
         if (report_clock_.getElapsedTime().asSeconds() >= 1.f) {
             report_clock_.restart();
-            spdlog::trace("Cursor hider: Steam menu open, cursor at {},{} ({}), controller {}", pos.x, pos.y,
-                          hidden_ ? "blanked" : "normal", controller_used ? "in use" : "idle");
-        }
-        // Compare against the position from the last hide/show, not the last tick: this loop runs
-        // every frame, so per-tick deltas of a normal mouse movement never reach the threshold.
-        const bool mouse_moved = std::abs(pos.x - anchor_pos_.x) > MOVE_THRESHOLD_PX ||
-                                 std::abs(pos.y - anchor_pos_.y) > MOVE_THRESHOLD_PX;
-        if (mouse_moved) {
-            anchor_pos_ = pos;
-            if (hidden_) {
-                spdlog::debug("Cursor hider: mouse moved, showing cursor again");
-                show();
-            }
-            return; // mouse wins this round; the controller can hide it again next time
-        }
-        if (controller_used && !hidden_ && blank_cursor_) {
-            spdlog::debug("Cursor hider: controller used, hiding cursor again");
-            hide();
+            spdlog::trace("Cursor: Steam menu open, pointer at {},{} ({})", pos.x, pos.y,
+                          hidden_ ? "hidden over GlosSI's window" : "visible");
         }
     }
+
+    // Called on shutdown.
+    void show() { setHidden(false); }
 
     // Reload the user's cursors from the registry. Safe to call any time.
     static bool RestoreSystemCursors()
@@ -133,25 +93,26 @@ class CursorHider {
 
   private:
     static constexpr int MOVE_THRESHOLD_PX = 8;
-    // OCR_NORMAL, IBEAM, WAIT, CROSS, UP, SIZENWSE, SIZENESW, SIZEWE, SIZENS, SIZEALL, NO, HAND,
-    // APPSTARTING, HELP, PIN, PERSON
-    static constexpr std::array<DWORD, 16> CURSOR_IDS = {
-        32512, 32513, 32514, 32515, 32516, 32642, 32643, 32644,
-        32645, 32646, 32648, 32649, 32650, 32651, 32671, 32672};
+    static constexpr float PARKED_TIMEOUT_S = 1.f;
 
-    bool hidden_ = false;
+    std::function<void(bool)> set_cursor_visible_;
     bool menu_open_ = false;
-    bool blank_cursor_ = false;
-    sf::Clock report_clock_;
+    bool hide_while_parked_ = false;
+    bool hidden_ = false;
     POINT anchor_pos_{};
+    sf::Clock parked_clock_;
+    sf::Clock report_clock_;
 
-    static HCURSOR createBlankCursor()
+    void setHidden(bool hidden)
     {
-        // 32x32 monochrome: AND mask all 1s + XOR mask all 0s = fully transparent
-        std::array<BYTE, 32 * 32 / 8> and_mask{};
-        std::array<BYTE, 32 * 32 / 8> xor_mask{};
-        and_mask.fill(0xFF);
-        return CreateCursor(GetModuleHandleW(nullptr), 0, 0, 32, 32, and_mask.data(), xor_mask.data());
+        if (hidden == hidden_) {
+            return;
+        }
+        hidden_ = hidden;
+        spdlog::debug("Cursor: {} for GlosSI's window", hidden ? "hidden" : "shown");
+        if (set_cursor_visible_) {
+            set_cursor_visible_(!hidden);
+        }
     }
 };
 #endif
