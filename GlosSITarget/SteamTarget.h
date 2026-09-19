@@ -22,6 +22,7 @@ limitations under the License.
 
 #ifdef _WIN32
 #include "../common/HidHide.h"
+#include "ControllerActivity.h"
 #include "CursorHider.h"
 #include "InputRedirector.h"
 #include <subhook.h>
@@ -109,6 +110,14 @@ class SteamTarget {
     int own_focus_count_ = 0;
 
     CursorHider cursor_hider_;
+    ControllerActivity controller_activity_;
+
+    // Our always-on-top window covers Steam's own windows (e.g. the "where to install" dialog),
+    // showing a frozen overlay image over them. Drop out of the topmost band while another
+    // window has focus.
+    void manageZOrder();
+    sf::Clock zorder_check_clock_;
+    int zorder_mismatch_count_ = 0;
 #endif
     TargetWindow window_;
     std::weak_ptr<Overlay> overlay_;

@@ -241,7 +241,8 @@ int SteamTarget::run()
 #ifdef _WIN32
         enforceClickThrough();
         handFocusToApp();
-        cursor_hider_.update();
+        manageZOrder();
+        cursor_hider_.update(controller_activity_.poll());
 #endif
 #ifdef _WIN32
         if (tray) {
@@ -365,6 +366,39 @@ void SteamTarget::enforceClickThrough()
 #endif
 
 #ifdef _WIN32
+void SteamTarget::manageZOrder()
+{
+    if (Settings::window.windowMode || !steam_overlay_present_ || !fully_initialized_) {
+        return;
+    }
+    if (zorder_check_clock_.getElapsedTime().asMilliseconds() < 250) {
+        return;
+    }
+    zorder_check_clock_.restart();
+
+    const HWND fg = realForegroundWindow();
+    // Stay on top over the launched app (that's where the Steam overlay has to draw), but get out
+    // of the way of any other window that has focus, e.g. a Steam dialog.
+    const bool want_topmost = fg == nullptr || fg == target_window_handle_ ||
+                              std::ranges::find(force_config_hwnds_, fg) != force_config_hwnds_.end();
+    if (want_topmost == window_.isTopmost()) {
+        zorder_mismatch_count_ = 0;
+        return;
+    }
+    if (++zorder_mismatch_count_ < 2) { // ~0.5 s, let focus changes settle
+        return;
+    }
+    zorder_mismatch_count_ = 0;
+    if (want_topmost) {
+        spdlog::info("Launched app is in front again; putting GlosSI's window back on top");
+    }
+    else {
+        spdlog::info("Window {:#x} is in front; moving GlosSI's window out of the always-on-top band",
+                     reinterpret_cast<uint64_t>(fg));
+    }
+    window_.setTopmost(want_topmost);
+}
+
 void SteamTarget::handFocusToApp()
 {
     if (Settings::window.focusOnSteamOverlay || Settings::window.windowMode || !steam_overlay_present_ ||
@@ -420,12 +454,7 @@ void SteamTarget::onOverlayChanged(bool overlay_open)
     const bool take_focus = Settings::window.focusOnSteamOverlay || Settings::window.windowMode;
 #ifdef _WIN32
     if (Settings::window.hideCursorInSteamOverlay && !Settings::window.windowMode) {
-        if (overlay_open) {
-            cursor_hider_.hide();
-        }
-        else {
-            cursor_hider_.show();
-        }
+        cursor_hider_.setSteamMenuOpen(overlay_open);
     }
 #endif
     if (overlay_open) {

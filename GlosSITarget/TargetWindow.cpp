@@ -149,6 +149,23 @@ void TargetWindow::setClickThrough(bool click_through)
 #endif
 }
 
+bool TargetWindow::isTopmost() const
+{
+#ifdef _WIN32
+    return (GetWindowLong(window_.getSystemHandle(), GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+#else
+    return true;
+#endif
+}
+
+void TargetWindow::setTopmost(bool topmost) const
+{
+#ifdef _WIN32
+    SetWindowPos(window_.getSystemHandle(), topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+#endif
+}
+
 bool TargetWindow::isClickThrough() const
 {
 #ifdef _WIN32

@@ -70,7 +70,15 @@ windows: you browse Steam in the overlay while the cursor still sits over the la
 which keeps showing it. GlosSITarget therefore blanks the system cursors while the Steam overlay
 is open and restores them (`SPI_SETCURSORS`) when it closes, when the mouse is moved, on
 shutdown, and at the next start. GlosSIWatchdog also restores them if GlosSITarget dies.
+While the menu is open it follows Steam's own behaviour: moving the mouse brings the cursor back,
+using the controller hides it again (gamepad input is read straight from XInput).
 Disable per shortcut with `"window": { "hideCursorInSteamOverlay": false }`.
+
+**Steam dialogs.** GlosSITarget's window is always-on-top, so Steam's own windows (the "where do
+you want to install this" dialog, for example) would open *behind* it, under a frozen image of
+the overlay - the UI looks stuck while it's really responding underneath. GlosSITarget now leaves
+the topmost band whenever a window other than the launched app has focus, and goes back on top
+when the app does.
 If the cursor is ever stuck invisible, run:
 `Add-Type -Name C -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint a, uint b, System.IntPtr c, uint d);'; [W.C]::SystemParametersInfo(0x57, 0, [IntPtr]::Zero, 0)`
 

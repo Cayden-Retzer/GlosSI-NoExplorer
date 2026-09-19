@@ -27,6 +27,9 @@ limitations under the License.
  * can hide it there. CursorHider swaps the system cursors for blank ones and puts the user's
  * cursors back with SPI_SETCURSORS (which reloads them from the registry, so a restore always
  * works, even from another process; GlosSIWatchdog does that too if GlosSITarget dies).
+ *
+ * While the Steam menu is open it follows Steam's own behaviour: moving the mouse brings the
+ * cursor back, using the controller hides it again.
  */
 class CursorHider {
   public:
@@ -40,7 +43,7 @@ class CursorHider {
         if (hidden_) {
             return;
         }
-        GetCursorPos(&hide_pos_);
+        GetCursorPos(&last_pos_);
         size_t replaced = 0;
         for (const auto id : CURSOR_IDS) {
             const HCURSOR blank = createBlankCursor();
@@ -64,6 +67,7 @@ class CursorHider {
             return;
         }
         hidden_ = false;
+        GetCursorPos(&last_pos_);
         if (RestoreSystemCursors()) {
             spdlog::debug("Cursor hider: cursor restored");
         }
@@ -72,20 +76,42 @@ class CursorHider {
         }
     }
 
-    // Call regularly. If the mouse gets moved while the cursor is hidden, someone is using
-    // a real mouse, so show the cursor again.
-    void update()
+    // The Steam menu (overlay) opened or closed.
+    void setSteamMenuOpen(bool open)
     {
-        if (!hidden_) {
+        menu_open_ = open;
+        if (open) {
+            hide();
+        }
+        else {
+            show();
+        }
+    }
+
+    // Call regularly while the Steam menu is open: the mouse brings the cursor back,
+    // the controller hides it again.
+    void update(bool controller_used)
+    {
+        if (!menu_open_) {
             return;
         }
         POINT pos{};
         if (!GetCursorPos(&pos)) {
             return;
         }
-        if (std::abs(pos.x - hide_pos_.x) > MOVE_THRESHOLD_PX || std::abs(pos.y - hide_pos_.y) > MOVE_THRESHOLD_PX) {
-            spdlog::debug("Cursor hider: mouse moved, showing cursor again");
-            show();
+        const bool mouse_moved = std::abs(pos.x - last_pos_.x) > MOVE_THRESHOLD_PX ||
+                                 std::abs(pos.y - last_pos_.y) > MOVE_THRESHOLD_PX;
+        last_pos_ = pos;
+        if (mouse_moved) {
+            if (hidden_) {
+                spdlog::debug("Cursor hider: mouse moved, showing cursor again");
+                show();
+            }
+            return; // mouse wins this round; the controller can hide it again next time
+        }
+        if (controller_used && !hidden_) {
+            spdlog::debug("Cursor hider: controller used, hiding cursor again");
+            hide();
         }
     }
 
@@ -104,7 +130,8 @@ class CursorHider {
         32645, 32646, 32648, 32649, 32650, 32651, 32671, 32672};
 
     bool hidden_ = false;
-    POINT hide_pos_{};
+    bool menu_open_ = false;
+    POINT last_pos_{};
 
     static HCURSOR createBlankCursor()
     {
