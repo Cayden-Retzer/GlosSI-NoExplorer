@@ -65,13 +65,15 @@ click-through; if Steam hands focus to GlosSI's window (e.g. "Resume game"), Glo
 on to the launched app. Restore the upstream behaviour per shortcut with
 `"window": { "focusOnSteamOverlay": true }`.
 
-**Cursor while in the Steam menu.** Steam draws its own pointer while its menu is open and pins
-the OS cursor in place; SFML nevertheless answers `WM_SETCURSOR` for GlosSITarget's window with an
-arrow, so that parked arrow sat on screen the whole time. GlosSITarget now hides the OS cursor for
-its own window (no system-wide state) while the pointer stays parked, and shows it again as soon
-as the pointer actually moves. ImGui-SFML is also stopped from setting a cursor every frame unless
-GlosSI's own overlay is up. Disable per shortcut with
-`"window": { "hideCursorInSteamOverlay": false }`.
+**Cursor while in the Steam menu.** Steam's overlay sets the cursor itself while its menu is
+drawn, after SFML does, so hiding it for GlosSITarget's window alone gets overridden. While the
+menu is open and the pointer is parked, GlosSITarget blanks the system cursor images
+(`SetSystemCursor`) as well, and restores them (`SPI_SETCURSORS`) as soon as the pointer moves, on
+shutdown, at the next start, and from GlosSIWatchdog if GlosSITarget dies. ImGui-SFML is also
+stopped from setting a cursor every frame unless GlosSI's own overlay is up. Disable per shortcut
+with `"window": { "hideCursorInSteamOverlay": false }`.
+If the cursor is ever stuck invisible, run:
+`Add-Type -Name C -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint a, uint b, System.IntPtr c, uint d);'; [W.C]::SystemParametersInfo(0x57, 0, [IntPtr]::Zero, 0)`
 
 **Window state.** GlosSITarget's invisible full-screen window is switched between three states
 (`SteamTarget::updateWindowState`, re-checked every 250 ms):

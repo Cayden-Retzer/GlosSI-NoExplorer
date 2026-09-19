@@ -19,6 +19,7 @@ limitations under the License.
 #include <SFML/System/Clock.hpp>
 #include <spdlog/spdlog.h>
 
+#include <array>
 #include <cstdlib>
 #include <functional>
 #include <utility>
@@ -28,10 +29,14 @@ limitations under the License.
  * place. SFML still answers WM_SETCURSOR for GlosSI's window with an arrow, so that pinned arrow
  * stays on screen the whole time you navigate with a controller.
  *
- * CursorHider hides the OS cursor for GlosSI's window only (no system-wide state to restore) while
- * the pointer is parked, and shows it again as soon as the pointer really moves, i.e. when Steam
- * hands the mouse back. RestoreSystemCursors() stays for older builds that blanked the system
- * cursors and might have been killed before restoring them.
+ * Steam's overlay sets the cursor itself while its menu is drawn, and it does so after SFML, so
+ * hiding the cursor for GlosSI's window alone gets overridden. CursorHider therefore also swaps
+ * the system cursor images for blank ones, which survives anyone asking for an arrow, and puts
+ * the user's cursors back with SPI_SETCURSORS (a registry reload, so a restore always works, even
+ * from another process; GlosSIWatchdog does it too if GlosSITarget dies).
+ *
+ * It blanks while the pointer stays parked and restores as soon as the pointer moves, so moving
+ * the mouse brings the cursor straight back and leaving it alone hides it again.
  */
 class CursorHider {
   public:
@@ -78,12 +83,19 @@ class CursorHider {
         if (report_clock_.getElapsedTime().asSeconds() >= 1.f) {
             report_clock_.restart();
             spdlog::trace("Cursor: Steam menu open, pointer at {},{} ({})", pos.x, pos.y,
-                          hidden_ ? "hidden over GlosSI's window" : "visible");
+                          hidden_ ? "blanked" : "visible");
         }
     }
 
     // Called on shutdown.
     void show() { setHidden(false); }
+
+    ~CursorHider()
+    {
+        if (hidden_) {
+            RestoreSystemCursors();
+        }
+    }
 
     // Reload the user's cursors from the registry. Safe to call any time.
     static bool RestoreSystemCursors()
@@ -93,6 +105,11 @@ class CursorHider {
 
   private:
     static constexpr int MOVE_THRESHOLD_PX = 8;
+    // OCR_NORMAL, IBEAM, WAIT, CROSS, UP, SIZENWSE, SIZENESW, SIZEWE, SIZENS, SIZEALL, NO, HAND,
+    // APPSTARTING, HELP, PIN, PERSON
+    static constexpr std::array<DWORD, 16> CURSOR_IDS = {
+        32512, 32513, 32514, 32515, 32516, 32642, 32643, 32644,
+        32645, 32646, 32648, 32649, 32650, 32651, 32671, 32672};
     static constexpr float PARKED_TIMEOUT_S = 1.f;
 
     std::function<void(bool)> set_cursor_visible_;
@@ -103,15 +120,47 @@ class CursorHider {
     sf::Clock parked_clock_;
     sf::Clock report_clock_;
 
+    static HCURSOR createBlankCursor()
+    {
+        // 32x32 monochrome: AND mask all 1s + XOR mask all 0s = fully transparent
+        std::array<BYTE, 32 * 32 / 8> and_mask{};
+        std::array<BYTE, 32 * 32 / 8> xor_mask{};
+        and_mask.fill(0xFF);
+        return CreateCursor(GetModuleHandleW(nullptr), 0, 0, 32, 32, and_mask.data(), xor_mask.data());
+    }
+
     void setHidden(bool hidden)
     {
         if (hidden == hidden_) {
             return;
         }
         hidden_ = hidden;
-        spdlog::debug("Cursor: {} for GlosSI's window", hidden ? "hidden" : "shown");
         if (set_cursor_visible_) {
             set_cursor_visible_(!hidden);
+        }
+        if (hidden) {
+            size_t replaced = 0;
+            for (const auto id : CURSOR_IDS) {
+                const HCURSOR blank = createBlankCursor();
+                if (blank == nullptr) {
+                    continue;
+                }
+                if (SetSystemCursor(blank, id)) { // takes ownership of `blank` on success
+                    ++replaced;
+                }
+                else {
+                    DestroyCursor(blank);
+                }
+            }
+            spdlog::debug("Cursor: hidden (blanked {}/{} system cursors)", replaced, CURSOR_IDS.size());
+        }
+        else {
+            if (RestoreSystemCursors()) {
+                spdlog::debug("Cursor: shown (system cursors restored)");
+            }
+            else {
+                spdlog::warn("Cursor: restoring system cursors failed (error {})", GetLastError());
+            }
         }
     }
 };
