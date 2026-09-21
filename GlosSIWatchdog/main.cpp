@@ -48,6 +48,7 @@ limitations under the License.
 #include "../common/Settings.h"
 #include "../common/HidHide.h"
 #include "../common/ArtworkFetcher.h"
+#include "SteamMenuCursor.h"
 
 #include <shellapi.h> // CommandLineToArgvW (WIN32_LEAN_AND_MEAN excludes it)
 
@@ -186,6 +187,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     ArtworkFetcher artwork;
     artwork.start();
 
+    // Cursor in the Steam menu: hidden on controller input, back on mouse movement.
+    // Lives here because Steam's overlay intercepts cursor calls inside GlosSITarget.
+    SteamMenuCursor steam_menu_cursor(target_pid);
+    if (Settings::window.hideCursorInSteamOverlay && !Settings::window.windowMode) {
+        steam_menu_cursor.start();
+    }
+
     http_client.set_connection_timeout(2);
     http_client.set_read_timeout(5);
 
@@ -215,6 +223,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             last_fetch_ok = false;
         }
     }
+    steam_menu_cursor.stop(); // restores the cursor if it was hidden
     if (target != nullptr) {
         CloseHandle(target);
     }
@@ -231,7 +240,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         HidHide hidhide;
         hidhide.disableHidHide();
 
-        // GlosSITarget blanks the cursor while the Steam overlay is open; make sure it comes back.
+        // The cursor gets blanked while the Steam menu is open; make sure it comes back.
         if (!SystemParametersInfoW(SPI_SETCURSORS, 0, nullptr, 0)) {
             spdlog::warn("Couldn't restore mouse cursors (error {})", GetLastError());
         }

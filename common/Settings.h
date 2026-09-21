@@ -67,8 +67,8 @@ namespace Settings
         // Off by default in this fork: with Big Picture as the shell the overlay is controller-driven,
         // and grabbing focus keeps Big Picture from ever getting it back (visible cursor, stuck input).
         bool focusOnSteamOverlay = false;
-        // Hide the OS cursor over GlosSI's own window while the Steam menu is open and the
-        // pointer is parked (Steam pins it and draws its own pointer).
+        // While the Steam menu is open: hide the cursor on controller input, show it again on mouse
+        // movement (done by GlosSIWatchdog, outside the process Steam's overlay runs in).
         bool hideCursorInSteamOverlay = true;
     } window;
 

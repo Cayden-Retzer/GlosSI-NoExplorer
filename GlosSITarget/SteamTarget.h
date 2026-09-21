@@ -22,7 +22,6 @@ limitations under the License.
 
 #ifdef _WIN32
 #include "../common/HidHide.h"
-#include "CursorHider.h"
 #include "InputRedirector.h"
 #include <subhook.h>
 #endif
@@ -109,7 +108,6 @@ class SteamTarget {
     sf::Clock focus_check_clock_;
     int own_focus_count_ = 0;
 
-    CursorHider cursor_hider_{[this](bool visible) { window_.setCursorVisible(visible); }};
 
 #endif
     TargetWindow window_;
