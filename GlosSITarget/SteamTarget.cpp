@@ -426,8 +426,8 @@ void SteamTarget::updateWindowState()
 
 void SteamTarget::handFocusToApp()
 {
-    if (Settings::window.focusOnSteamOverlay || Settings::window.windowMode || !steam_overlay_present_ ||
-        !fully_initialized_ || delayed_shutdown_) {
+    if (!Settings::window.handFocusToApp || Settings::window.focusOnSteamOverlay || Settings::window.windowMode ||
+        !steam_overlay_present_ || !fully_initialized_ || delayed_shutdown_) {
         return;
     }
     if (focus_check_clock_.getElapsedTime().asMilliseconds() < 250) {

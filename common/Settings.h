@@ -70,6 +70,9 @@ namespace Settings
         // While the Steam menu is open: hide the cursor on controller input, show it again on mouse
         // movement (done by GlosSIWatchdog, outside the process Steam's overlay runs in).
         bool hideCursorInSteamOverlay = true;
+        // When Steam gives GlosSI's (click-through) window focus, e.g. on "Resume", pass it on to the
+        // launched app. Switchable to test whether Steam needs its "game window" to keep focus.
+        bool handFocusToApp = true;
     } window;
 
     inline struct Controller
@@ -238,6 +241,7 @@ namespace Settings
                 safeParseValue(winconf, "forwardKeyboardInput", window.forwardKeyboardInput);
                 safeParseValue(winconf, "focusOnSteamOverlay", window.focusOnSteamOverlay);
                 safeParseValue(winconf, "hideCursorInSteamOverlay", window.hideCursorInSteamOverlay);
+                safeParseValue(winconf, "handFocusToApp", window.handFocusToApp);
             }
 
             if (const auto controllerConf = json["controller"]; !controllerConf.is_null() && !controllerConf.empty() && controllerConf.is_object())
@@ -359,6 +363,7 @@ namespace Settings
         json["window"]["forwardKeyboardInput"] = window.forwardKeyboardInput;
         json["window"]["focusOnSteamOverlay"] = window.focusOnSteamOverlay;
         json["window"]["hideCursorInSteamOverlay"] = window.hideCursorInSteamOverlay;
+        json["window"]["handFocusToApp"] = window.handFocusToApp;
         json["controller"]["maxControllers"] = controller.maxControllers;
         json["controller"]["allowDesktopConfig"] = controller.allowDesktopConfig;
         json["controller"]["emulateDS4"] = controller.emulateDS4;
