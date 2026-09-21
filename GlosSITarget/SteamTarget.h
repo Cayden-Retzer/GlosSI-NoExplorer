@@ -97,6 +97,7 @@ class SteamTarget {
     // Keeps the window's click-through state and z-order in step with what's in front.
     void updateWindowState();
     sf::Clock window_state_clock_;
+    bool window_state_dirty_ = false;
     int state_change_count_ = 0;
     bool other_in_front_ = false;
 

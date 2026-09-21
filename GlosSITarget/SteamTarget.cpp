@@ -364,9 +364,12 @@ void SteamTarget::updateWindowState()
     if (Settings::window.windowMode || !steam_overlay_present_ || !fully_initialized_) {
         return;
     }
-    if (window_state_clock_.getElapsedTime().asMilliseconds() < 250) {
+    // Re-check four times a second, or right away when the Steam overlay just opened/closed
+    // (the watchdog hides the cursor as soon as this window starts taking input).
+    if (!window_state_dirty_ && window_state_clock_.getElapsedTime().asMilliseconds() < 250) {
         return;
     }
+    window_state_dirty_ = false;
     window_state_clock_.restart();
 
     if (!overlay_.expired() && overlay_.lock()->isEnabled()) {
@@ -463,6 +466,7 @@ void SteamTarget::onOverlayChanged(bool overlay_open)
 {
 #ifdef _WIN32
     steam_overlay_open_ = overlay_open;
+    window_state_dirty_ = true;
 #endif
     const bool take_focus = Settings::window.focusOnSteamOverlay || Settings::window.windowMode;
     // Click-through and z-order are handled by updateWindowState(); only focus and the
