@@ -81,11 +81,14 @@ If the cursor is ever stuck invisible, run:
 **Window state.** GlosSITarget's invisible full-screen window is switched between three states
 (`SteamTarget::updateWindowState`, re-checked every 250 ms):
 
-| what's in front | z-order | input |
+| situation | z-order | input |
 |---|---|---|
-| another window (Big Picture, a Steam dialog, ...) | bottom | click-through |
-| launched app, Steam overlay open | topmost | takes input (mouse drives the Steam menu) |
-| launched app, no overlay | topmost | click-through |
+| Steam menu open, and nothing else took focus since it opened | topmost | takes input (mouse drives the Steam menu) |
+| another window (Big Picture, a Steam dialog, ...) took focus more recently | bottom | click-through |
+| otherwise | topmost | click-through |
+
+The ordering matters because Steam can open its menu in GlosSITarget's window while Big Picture
+is in front; staying at the back then left the menu invisible while it swallowed controller input.
 
 Sending it to the *bottom* matters: `HWND_NOTOPMOST` would still leave it above every normal
 window, so Steam's dialogs stayed hidden behind it under a frozen image of the overlay. Steam's

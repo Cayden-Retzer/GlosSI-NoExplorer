@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 #pragma once
+#include <cstdint>
 #define WIN32_LEAN_AND_MEAN
 
 #include "SteamOverlayDetector.h"
@@ -100,6 +101,12 @@ class SteamTarget {
     bool window_state_dirty_ = false;
     int state_change_count_ = 0;
     bool other_in_front_ = false;
+    HWND settled_fg_ = nullptr;
+    HWND pending_fg_ = nullptr;
+    // ordering of "Steam menu opened" vs. "another window took focus"
+    uint64_t event_seq_ = 0;
+    uint64_t menu_open_seq_ = 0;
+    uint64_t other_focus_seq_ = 0;
 
     // With focusOnSteamOverlay off: if Steam activates our window (e.g. "Resume game"),
     // hand focus to the launched app instead of keeping it on our invisible window.

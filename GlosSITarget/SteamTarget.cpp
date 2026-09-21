@@ -356,11 +356,15 @@ HWND realForegroundWindow()
 void SteamTarget::updateWindowState()
 {
     // Three states for our invisible full-screen window:
-    //  - another window (Big Picture, a Steam dialog, ...) has focus:
+    //  - the Steam menu is the active thing (it is open, and nothing else took focus since it
+    //    opened): on top and taking input, so it's visible and the mouse can drive it.
+    //  - another window (Big Picture, a Steam dialog, ...) took focus more recently:
     //      click-through and at the back, so that window is visible and usable.
-    //  - the Steam overlay is open over the launched app:
-    //      on top and taking input, so the mouse can drive the Steam menu drawn into our window.
     //  - otherwise: on top and click-through, so the launched app gets everything.
+    //
+    // "More recently" matters: Steam can open its menu in our window while Big Picture is in
+    // front (e.g. after coming back to Big Picture with the Windows key). If we stayed at the back
+    // then, the menu would be invisible and still swallow all controller input.
     if (Settings::window.windowMode || !steam_overlay_present_ || !fully_initialized_) {
         return;
     }
@@ -377,28 +381,35 @@ void SteamTarget::updateWindowState()
     }
 
     const HWND fg = realForegroundWindow();
-    const bool other_in_front = fg != nullptr && fg != target_window_handle_ &&
-                                std::ranges::find(force_config_hwnds_, fg) == force_config_hwnds_.end();
-    if (other_in_front != other_in_front_) {
-        if (++state_change_count_ < 2) { // ~0.5 s, let focus changes settle
-            return;
+    if (fg != settled_fg_) {
+        // let focus changes settle for ~0.5 s before acting on them
+        if (fg != pending_fg_) {
+            pending_fg_ = fg;
+            state_change_count_ = 0;
         }
-        state_change_count_ = 0;
-        other_in_front_ = other_in_front;
-        if (other_in_front) {
-            spdlog::info("{} is in front; GlosSI's window moves to the back and stops taking input",
-                         describeWindow(fg));
-        }
-        else {
-            spdlog::info("Launched app is in front again; GlosSI's window goes back on top");
+        if (++state_change_count_ >= 2) {
+            state_change_count_ = 0;
+            settled_fg_ = fg;
+            const bool other_in_front = fg != nullptr && fg != target_window_handle_ &&
+                                        std::ranges::find(force_config_hwnds_, fg) == force_config_hwnds_.end();
+            if (other_in_front) {
+                other_focus_seq_ = ++event_seq_; // every new foreign window counts, e.g. a popup over Big Picture
+                spdlog::info("{} is in front", describeWindow(fg));
+            }
+            else if (other_in_front_) {
+                spdlog::info("Launched app is in front again");
+            }
+            other_in_front_ = other_in_front;
         }
     }
     else {
+        pending_fg_ = fg;
         state_change_count_ = 0;
     }
 
-    const bool want_click_through = other_in_front_ || !steam_overlay_open_;
-    const bool want_topmost = !other_in_front_;
+    const bool menu_active = steam_overlay_open_ && (!other_in_front_ || menu_open_seq_ > other_focus_seq_);
+    const bool want_click_through = !menu_active;
+    const bool want_topmost = menu_active || !other_in_front_;
 
     if (window_.isClickThrough() != want_click_through) {
         spdlog::debug("GlosSI's window now {} mouse input", want_click_through ? "passes through" : "takes");
@@ -408,9 +419,7 @@ void SteamTarget::updateWindowState()
         }
     }
     if (window_.isTopmost() != want_topmost) {
-        if (!want_topmost) {
-            spdlog::debug("Something raised GlosSI's window again; moving it back down");
-        }
+        spdlog::debug("GlosSI's window {}", want_topmost ? "goes on top" : "moves to the back");
         window_.setTopmost(want_topmost);
     }
 }
@@ -466,6 +475,9 @@ void SteamTarget::onOverlayChanged(bool overlay_open)
 {
 #ifdef _WIN32
     steam_overlay_open_ = overlay_open;
+    if (overlay_open) {
+        menu_open_seq_ = ++event_seq_;
+    }
     window_state_dirty_ = true;
 #endif
     const bool take_focus = Settings::window.focusOnSteamOverlay || Settings::window.windowMode;
