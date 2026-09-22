@@ -29,6 +29,10 @@ limitations under the License.
 
 class AppLauncher {
   public:
+    // Guards the launched-app window list: it's rebuilt here on the main thread and read by the
+    // GetForegroundWindow detour, which Steam's overlay may call from other threads.
+    static inline std::mutex process_hwnds_mutex;
+
     explicit AppLauncher(
         std::vector<HWND>& process_hwnds,
         std::function<void()> shutdown = []() {});

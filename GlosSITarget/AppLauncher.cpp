@@ -265,34 +265,38 @@ void AppLauncher::getChildPids(DWORD parent_pid)
 
 void AppLauncher::getProcessHwnds()
 {
-    process_hwnds_.clear();
+    // Build the list off to the side and swap it in under the lock, so readers never see it half-built.
+    std::vector<HWND> hwnds;
     HWND curr_wnd = nullptr;
-    do {
-        curr_wnd = FindWindowEx(nullptr, curr_wnd, nullptr, nullptr);
+    while ((curr_wnd = FindWindowEx(nullptr, curr_wnd, nullptr, nullptr)) != nullptr) {
         DWORD check_pid = 0;
         GetWindowThreadProcessId(curr_wnd, &check_pid);
-        if ((std::ranges::find_if(pids_, [check_pid](auto pid) {
-                 return pid == check_pid;
-             }) != pids_.end())) {
-            process_hwnds_.push_back(curr_wnd);
+        if (check_pid != 0 && std::ranges::find(pids_, check_pid) != pids_.end()) {
+            hwnds.push_back(curr_wnd);
         }
-    } while (curr_wnd != nullptr);
+    }
     if (!launched_uwp_path_.empty()) {
         // UWP and ApplicationFrameHost Bullshit.
         // iterate all "ApplicationFrameWindow"; check the AppUserModelId (used for launching) and add on match.
-        do {
-            curr_wnd = FindWindowEx(nullptr, curr_wnd, L"ApplicationFrameWindow", nullptr);
-            IPropertyStore* propStore;
-            SHGetPropertyStoreForWindow(curr_wnd, IID_IPropertyStore, reinterpret_cast<void**>(&propStore));
-            PROPVARIANT prop;
-            if (propStore != nullptr) {
-                propStore->GetValue(PKEY_AppUserModel_ID, &prop);
-                if (prop.bstrVal != nullptr && std::wstring(prop.bstrVal) == launched_uwp_path_) {
-                    process_hwnds_.push_back(curr_wnd);
-                }
+        curr_wnd = nullptr;
+        while ((curr_wnd = FindWindowEx(nullptr, curr_wnd, L"ApplicationFrameWindow", nullptr)) != nullptr) {
+            IPropertyStore* propStore = nullptr;
+            if (FAILED(SHGetPropertyStoreForWindow(curr_wnd, IID_IPropertyStore, reinterpret_cast<void**>(&propStore))) ||
+                propStore == nullptr) {
+                continue;
             }
-        } while (curr_wnd != nullptr);
+            PROPVARIANT prop;
+            PropVariantInit(&prop);
+            if (SUCCEEDED(propStore->GetValue(PKEY_AppUserModel_ID, &prop)) && prop.bstrVal != nullptr &&
+                std::wstring(prop.bstrVal) == launched_uwp_path_) {
+                hwnds.push_back(curr_wnd);
+            }
+            PropVariantClear(&prop);
+            propStore->Release();
+        }
     }
+    std::scoped_lock lock(process_hwnds_mutex);
+    process_hwnds_.swap(hwnds);
 }
 
 #endif

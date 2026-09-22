@@ -65,7 +65,8 @@ class SteamMenuCursor {
     }
 
   private:
-    static constexpr int TICK_MS = 30;
+    static constexpr int TICK_MS = 30;       // while the Steam menu is open
+    static constexpr int IDLE_TICK_MS = 100; // while it's closed: only the window state is checked
     static constexpr int MOVE_THRESHOLD_PX = 4;
     static constexpr int STICK_THRESHOLD = 12000; // of 32767, well above resting drift
     static constexpr int TRIGGER_THRESHOLD = 60;  // of 255
@@ -79,6 +80,7 @@ class SteamMenuCursor {
     DWORD target_pid_;
     std::atomic<bool> running_{false};
     std::thread thread_;
+    HWND target_hwnd_ = nullptr; // cached; looked up again only if it goes away
 
     bool blanked_ = false;
     POINT anchor_{};
@@ -88,10 +90,27 @@ class SteamMenuCursor {
 
     void run()
     {
-        GetCursorPos(&anchor_);
         bool menu_was_open = false;
         while (running_) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(TICK_MS));
+            std::this_thread::sleep_for(std::chrono::milliseconds(menu_was_open ? TICK_MS : IDLE_TICK_MS));
+
+            const bool menu_open = steamMenuOpen();
+            if (!menu_open) {
+                if (menu_was_open) {
+                    spdlog::debug("Steam menu closed");
+                    setBlanked(false, "Steam menu closed");
+                    menu_was_open = false;
+                }
+                continue; // nothing else to watch until the menu opens
+            }
+            if (!menu_was_open) {
+                spdlog::debug("Steam menu open");
+                menu_was_open = true;
+                GetCursorPos(&anchor_);
+                pollPads(); // take a baseline, so the press that opened the menu doesn't count twice
+                setBlanked(true, "Steam menu opened"); // it's normally opened with the controller
+                continue;
+            }
 
             POINT pos{};
             GetCursorPos(&pos);
@@ -99,45 +118,30 @@ class SteamMenuCursor {
                                      std::abs(pos.y - anchor_.y) > MOVE_THRESHOLD_PX;
             if (mouse_moved) {
                 anchor_ = pos;
-            }
-            const bool pad_used = pollPads();
-            const bool menu_open = steamMenuOpen();
-
-            if (!menu_open) {
-                if (menu_was_open) {
-                    spdlog::debug("Steam menu closed");
-                }
-                setBlanked(false, "Steam menu closed");
-            }
-            else if (!menu_was_open) {
-                spdlog::debug("Steam menu open");
-                setBlanked(true, "Steam menu opened"); // it's normally opened with the controller
-            }
-            else if (mouse_moved) {
                 setBlanked(false, "mouse moved");
             }
-            else if (pad_used) {
+            else if (pollPads()) {
                 setBlanked(true, "controller used");
             }
-            menu_was_open = menu_open;
         }
         setBlanked(false, "stopping");
     }
 
     // The Steam menu is open over the launched app exactly when GlosSITarget's (otherwise
     // click-through) window takes mouse input - see SteamTarget::updateWindowState.
-    bool steamMenuOpen() const
+    bool steamMenuOpen()
     {
-        const HWND hwnd = FindWindowA(nullptr, "GlosSITarget");
-        if (hwnd == nullptr) {
-            return false;
+        if (target_hwnd_ == nullptr || !IsWindow(target_hwnd_)) {
+            target_hwnd_ = nullptr;
+            const HWND hwnd = FindWindowA(nullptr, "GlosSITarget");
+            DWORD pid = 0;
+            GetWindowThreadProcessId(hwnd, &pid);
+            if (hwnd == nullptr || pid != target_pid_) {
+                return false;
+            }
+            target_hwnd_ = hwnd;
         }
-        DWORD pid = 0;
-        GetWindowThreadProcessId(hwnd, &pid);
-        if (pid != target_pid_) {
-            return false;
-        }
-        return (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TRANSPARENT) == 0;
+        return (GetWindowLongPtrW(target_hwnd_, GWL_EXSTYLE) & WS_EX_TRANSPARENT) == 0;
     }
 
     bool pollPads()

@@ -23,6 +23,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "ForegroundWindow.h"
+
 /*
  * Steam's on-screen keyboard types into the window Steam believes is in the
  * foreground. SteamTarget::keepControllerConfig detours GetForegroundWindow so
@@ -59,7 +61,7 @@ class KeyboardPassthrough {
             pending_.clear();
             return;
         }
-        const HWND fg = realForegroundWindow();
+        const HWND fg = glossi::RealForegroundWindow();
         if (fg == nullptr || fg == own_window) {
             // Our window has focus (Steam overlay / keyboard open). Wait until focus is back on the app,
             // otherwise we'd just send the input to ourselves again.
@@ -80,18 +82,6 @@ class KeyboardPassthrough {
     static constexpr float MAX_QUEUE_AGE_S = 30.f;
     std::vector<INPUT> pending_;
     sf::Clock queued_clock_;
-
-    // GetForegroundWindow is detoured in this process to return our own window,
-    // so ask the foreground GUI thread instead.
-    static HWND realForegroundWindow()
-    {
-        GUITHREADINFO info{};
-        info.cbSize = sizeof(info);
-        if (!GetGUIThreadInfo(0, &info)) {
-            return nullptr;
-        }
-        return info.hwndActive;
-    }
 
     static WORD navKeyToVk(sf::Keyboard::Key key)
     {

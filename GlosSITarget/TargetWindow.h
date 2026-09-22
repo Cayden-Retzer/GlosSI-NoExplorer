@@ -39,11 +39,11 @@ class TargetWindow {
     );
 
     void setFpsLimit(unsigned int fps_limit);
+    // Drop to Settings::window.idleFps while nothing is drawn on the (transparent) window.
+    void setIdle(bool idle);
     void setClickThrough(bool click_through);
     bool isClickThrough() const;
     bool isTopmost() const;
-    // Hides/shows the OS cursor while it is over our window only (SFML's WM_SETCURSOR handling).
-    void setCursorVisible(bool visible);
     void setTopmost(bool topmost) const;
     // Hide the window without destroying it (used before shutdown cleanup).
     void hide() const;
@@ -84,6 +84,9 @@ class TargetWindow {
     static constexpr int RES_CHECK_SECONDS = 1;
 
     unsigned int screen_refresh_rate_ = 0;
+    unsigned int fps_limit_ = 0; // the regular (active) limit; 0 = unlimited
+    bool idle_ = false;
+    void applyFpsLimit();
 
 
     std::shared_ptr<Overlay> overlay_;

@@ -57,6 +57,9 @@ namespace Settings
     {
         bool windowMode = false;
         int maxFps = 0;
+        // Frame-rate cap while neither the Steam overlay nor GlosSI's own overlay is open (the window
+        // is fully transparent then, so drawing it at full rate is wasted work). 0 = no idle cap.
+        int idleFps = 30;
         float scale = 0.f;
         bool disableOverlay = false;
         bool hideAltTab = true;
@@ -70,9 +73,6 @@ namespace Settings
         // While the Steam menu is open: hide the cursor on controller input, show it again on mouse
         // movement (done by GlosSIWatchdog, outside the process Steam's overlay runs in).
         bool hideCursorInSteamOverlay = true;
-        // When Steam gives GlosSI's (click-through) window focus, e.g. on "Resume", pass it on to the
-        // launched app. Switchable to test whether Steam needs its "game window" to keep focus.
-        bool handFocusToApp = true;
     } window;
 
     inline struct Controller
@@ -233,6 +233,7 @@ namespace Settings
             {
                 safeParseValue(winconf, "windowMode", window.windowMode);
                 safeParseValue(winconf, "maxFps", window.maxFps);
+                safeParseValue(winconf, "idleFps", window.idleFps);
                 safeParseValue(winconf, "scale", window.scale);
                 safeParseValue(winconf, "disableOverlay", window.disableOverlay);
                 safeParseValue(winconf, "hideAltTab", window.hideAltTab);
@@ -241,7 +242,6 @@ namespace Settings
                 safeParseValue(winconf, "forwardKeyboardInput", window.forwardKeyboardInput);
                 safeParseValue(winconf, "focusOnSteamOverlay", window.focusOnSteamOverlay);
                 safeParseValue(winconf, "hideCursorInSteamOverlay", window.hideCursorInSteamOverlay);
-                safeParseValue(winconf, "handFocusToApp", window.handFocusToApp);
             }
 
             if (const auto controllerConf = json["controller"]; !controllerConf.is_null() && !controllerConf.empty() && controllerConf.is_object())
@@ -356,6 +356,7 @@ namespace Settings
         json["devices"]["realDeviceIds"] = devices.realDeviceIds;
         json["window"]["windowMode"] = window.windowMode;
         json["window"]["maxFps"] = window.maxFps;
+        json["window"]["idleFps"] = window.idleFps;
         json["window"]["scale"] = window.scale;
         json["window"]["disableOverlay"] = window.disableOverlay;
         json["window"]["hideAltTab"] = window.hideAltTab;
@@ -363,7 +364,6 @@ namespace Settings
         json["window"]["forwardKeyboardInput"] = window.forwardKeyboardInput;
         json["window"]["focusOnSteamOverlay"] = window.focusOnSteamOverlay;
         json["window"]["hideCursorInSteamOverlay"] = window.hideCursorInSteamOverlay;
-        json["window"]["handFocusToApp"] = window.handFocusToApp;
         json["controller"]["maxControllers"] = controller.maxControllers;
         json["controller"]["allowDesktopConfig"] = controller.allowDesktopConfig;
         json["controller"]["emulateDS4"] = controller.emulateDS4;

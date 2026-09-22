@@ -16,6 +16,8 @@ limitations under the License.
 
 #include "CEFInject.h"
 
+#include <chrono>
+
 
 #include <easywsclient.hpp>
 
@@ -110,12 +112,20 @@ namespace CEFInject
 				};
 				auto payload_string = json_payload.dump();
 
-				spdlog::debug("Injecting JS into tab: {}, {}; JS: {}", tab_name, debug_url, payload_string);
+				// the payload is the whole tweak bundle; logging it every time just bloats the log
+				spdlog::debug("Injecting JS into tab: {}, {} ({} bytes)", tab_name, debug_url, payload_string.size());
 
 				ws->send(payload_string);
 				bool exit = false;
+				const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 				while (ws->getReadyState() != easywsclient::WebSocket::CLOSED) {
-					ws->poll();
+					if (std::chrono::steady_clock::now() > deadline) {
+						// don't wait forever on a tab that never answers (this used to hang shutdown)
+						spdlog::warn("CEFInject: no answer from tab {} within 5s, giving up", tab_name);
+						ws->close();
+						return res;
+					}
+					ws->poll(10); // wait for data instead of spinning a whole CPU core
 					ws->dispatch([&ws, &res, &exit](const std::string& message) {
 						const auto msg = nlohmann::json::parse(message);
 					try

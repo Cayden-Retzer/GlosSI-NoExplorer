@@ -38,16 +38,14 @@ GlosSI overlay is open.
 
 On by default; disable per shortcut with `"window": { "forwardKeyboardInput": false }`.
 
-## Input lock / "not responding" safeguards
+## Shutdown safeguards
 
-- If GlosSI still thinks the Steam overlay is open (so its invisible full-screen window takes
-  input) while another window such as Big Picture is really in front, the window is made
-  click-through again after ~0.75 s.
-- On shutdown the window is hidden before any cleanup runs, each cleanup step is logged
-  (`Shutdown: ...`), and if cleanup hasn't finished after 10 s GlosSITarget force-exits
-  (GlosSIWatchdog resets HidHide afterwards).
-- Shutdown no longer waits for the Steam UI tweaks to be uninstalled (that call could block
-  forever); the injected tweaks remove themselves once GlosSITarget stops answering.
+- The window is hidden before any cleanup runs, so a slow step can't leave a white
+  "not responding" window over everything. Each step is logged (`Shutdown: ...`), and if cleanup
+  hasn't finished after 10 s GlosSITarget force-exits (GlosSIWatchdog resets HidHide afterwards).
+- Shutdown doesn't wait for the Steam UI tweaks to be uninstalled (that call could block forever);
+  the injected tweaks remove themselves once GlosSITarget stops answering. Each injection also
+  gives up after 5 s instead of waiting indefinitely on a tab that never answers.
 
 ## Using Big Picture as your shell
 
@@ -57,13 +55,28 @@ writes `"minimizeSteamGamepadUI": true` into every shortcut without showing it i
 Big Picture is your main UI, set it to `false` in `%APPDATA%\GlosSI\Targets\<shortcut>.json`
 (and in `%APPDATA%\GlosSI\default.json` for new shortcuts).
 
-**Steam overlay focus.** Upstream GlosSI moves focus to its own invisible, input-taking
-window whenever the Steam overlay opens. With Big Picture as the shell that keeps Big Picture
-from ever getting focus back (you end up navigating Steam "through" GlosSI's window, with a
-cursor Big Picture can't hide). This fork leaves focus alone by default and keeps the window
-click-through; if Steam hands focus to GlosSI's window (e.g. "Resume game"), GlosSI passes it
-on to the launched app. Restore the upstream behaviour per shortcut with
-`"window": { "focusOnSteamOverlay": true }`.
+**Steam overlay focus.** Upstream GlosSI moves focus to its own invisible, input-taking window
+whenever the Steam overlay opens. With Big Picture as the shell that keeps Big Picture from ever
+getting focus back. This fork leaves focus alone; if Steam hands focus to GlosSI's window
+(e.g. "Resume game"), GlosSI passes it on to the launched app. Restore the upstream behaviour per
+shortcut with `"window": { "focusOnSteamOverlay": true }`.
+
+**Window state.** GlosSITarget's invisible full-screen window is switched between three states
+(`SteamTarget::updateWindowState`: every 250 ms, and immediately when the Steam overlay opens or
+closes):
+
+| situation | z-order | input |
+|---|---|---|
+| Steam menu open, and nothing else took focus since it opened | topmost | takes input (mouse drives the Steam menu) |
+| another window (Big Picture, a Steam dialog, ...) took focus more recently | bottom | click-through |
+| otherwise | topmost | click-through |
+
+- The ordering matters because Steam can open its menu in GlosSITarget's window while Big Picture
+  is in front; staying at the back then left the menu invisible while it swallowed controller input.
+- Sending it to the *bottom* matters: `HWND_NOTOPMOST` would still leave it above every normal
+  window, so Steam's dialogs stayed hidden behind it under a frozen image of the overlay. Steam's
+  overlay also raises the window by itself, so the state is re-applied rather than only set on
+  change.
 
 **Cursor while in the Steam menu.** Steam's overlay runs inside GlosSITarget's process, and while
 its menu is open it intercepts cursor handling there: `SetCursor` gets overridden, `GetCursorPos`
@@ -78,24 +91,33 @@ open over the launched app. Disable per shortcut with
 If the cursor is ever stuck invisible, run:
 `Add-Type -Name C -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint a, uint b, System.IntPtr c, uint d);'; [W.C]::SystemParametersInfo(0x57, 0, [IntPtr]::Zero, 0)`
 
-**Window state.** GlosSITarget's invisible full-screen window is switched between three states
-(`SteamTarget::updateWindowState`, re-checked every 250 ms):
+**Known Steam bug (not GlosSI).** Opening an Install dialog from Big Picture while a game is
+running, backing out of it and then resuming the game makes the Guide button open Big Picture's
+own menu behind the game instead of the in-game menu. It reproduces with a regular Steam game too.
 
-| situation | z-order | input |
-|---|---|---|
-| Steam menu open, and nothing else took focus since it opened | topmost | takes input (mouse drives the Steam menu) |
-| another window (Big Picture, a Steam dialog, ...) took focus more recently | bottom | click-through |
-| otherwise | topmost | click-through |
+## Performance
 
-The ordering matters because Steam can open its menu in GlosSITarget's window while Big Picture
-is in front; staying at the back then left the menu invisible while it swallowed controller input.
+- **Idle frame rate.** GlosSITarget's window is fully transparent unless an overlay is open, so it
+  drops to `"window": { "idleFps": 30 }` then and goes back to the regular limit (`maxFps`, or
+  the screen refresh rate halved down to 60 or below) the moment the Steam overlay or GlosSI's
+  overlay opens. `0` disables the idle cap. Lower values save a little more but delay noticing the
+  Steam overlay (three frames) and make Steam's toast notifications less smooth.
+- **Steam's `GetForegroundWindow` calls** (for "Allow desktop-config") no longer remove and
+  re-install the detour on every call: the real foreground window comes from `GetGUIThreadInfo`,
+  and the launched-app window list is swapped in under a lock instead of being rebuilt in place.
+- **Background work:** the launched-app process/window scan runs every 250 ms, window-state checks
+  every 250 ms, the watchdog checks the menu state every 100 ms (30 ms, with controller and pointer
+  polling, only while the Steam menu is open), and Steam UI tweaks are re-checked every 30 s.
+- **Extended Logging** (GlosSIConfig → Advanced) writes a line for every window message while the
+  Steam overlay is open, and every log line is flushed to disk. Leave it off unless you're
+  debugging.
 
-Sending it to the *bottom* matters: `HWND_NOTOPMOST` would still leave it above every normal
-window, so Steam's dialogs stayed hidden behind it under a frozen image of the overlay. Steam's
-overlay also raises the window by itself, so the state is re-applied rather than only set on
-change.
-If the cursor is ever stuck invisible, run:
-`Add-Type -Name C -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint a, uint b, System.IntPtr c, uint d);'; [W.C]::SystemParametersInfo(0x57, 0, [IntPtr]::Zero, 0)`
+## Tools
+
+- `update-glossi.ps1`: waits for the GitHub Actions build of the checked-out commit, verifies it,
+  installs it, and checks which `GlosSITarget.exe` Steam launches.
+- `tools\focus-probe.ps1`: logs which window is in front, which is under the cursor, cursor
+  visibility and whether GlosSI's window is click-through, for debugging focus problems.
 
 ## Automatic Steam artwork and icons
 

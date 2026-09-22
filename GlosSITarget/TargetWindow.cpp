@@ -110,8 +110,31 @@ TargetWindow::TargetWindow(
 
 void TargetWindow::setFpsLimit(unsigned int fps_limit)
 {
-    spdlog::trace("Limiting FPS to {}", fps_limit);
-    window_.setFramerateLimit(fps_limit);
+    fps_limit_ = fps_limit;
+    applyFpsLimit();
+}
+
+void TargetWindow::setIdle(bool idle)
+{
+    if (idle == idle_) {
+        return;
+    }
+    idle_ = idle;
+    applyFpsLimit();
+}
+
+void TargetWindow::applyFpsLimit()
+{
+    unsigned int limit = fps_limit_;
+    const int idle_fps = Settings::window.idleFps;
+    if (idle_ && idle_fps > 0) {
+        const auto idle_limit = static_cast<unsigned int>(idle_fps < 5 ? 5 : idle_fps);
+        if (limit == 0 || idle_limit < limit) {
+            limit = idle_limit;
+        }
+    }
+    spdlog::debug("Limiting FPS to {}{}", limit, idle_ ? " (idle)" : "");
+    window_.setFramerateLimit(limit);
 }
 
 void TargetWindow::setClickThrough(bool click_through)
@@ -147,11 +170,6 @@ void TargetWindow::setClickThrough(bool click_through)
         }
     }
 #endif
-}
-
-void TargetWindow::setCursorVisible(bool visible)
-{
-    window_.setMouseCursorVisible(visible);
 }
 
 bool TargetWindow::isTopmost() const

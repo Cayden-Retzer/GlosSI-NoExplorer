@@ -32,6 +32,7 @@ limitations under the License.
 #include <CEFInject.h>
 
 #include "CommonHttpEndpoints.h"
+#include "ForegroundWindow.h"
 
 #include <algorithm>
 #include <atomic>
@@ -338,17 +339,6 @@ std::string describeWindow(HWND hwnd)
     }
 }
 
-// GetForegroundWindow is detoured in this process (keepControllerConfig),
-// so ask the foreground GUI thread for the real active window instead.
-HWND realForegroundWindow()
-{
-    GUITHREADINFO info{};
-    info.cbSize = sizeof(info);
-    if (!GetGUIThreadInfo(0, &info)) {
-        return nullptr;
-    }
-    return info.hwndActive;
-}
 } // namespace
 #endif
 
@@ -376,11 +366,13 @@ void SteamTarget::updateWindowState()
     window_state_dirty_ = false;
     window_state_clock_.restart();
 
-    if (!overlay_.expired() && overlay_.lock()->isEnabled()) {
+    const bool glossi_overlay_open = !overlay_.expired() && overlay_.lock()->isEnabled();
+    window_.setIdle(!steam_overlay_open_ && !glossi_overlay_open);
+    if (glossi_overlay_open) {
         return; // GlosSI's own overlay sets the window up itself
     }
 
-    const HWND fg = realForegroundWindow();
+    const HWND fg = glossi::RealForegroundWindow();
     if (fg != settled_fg_) {
         // let focus changes settle for ~0.5 s before acting on them
         if (fg != pending_fg_) {
@@ -426,8 +418,8 @@ void SteamTarget::updateWindowState()
 
 void SteamTarget::handFocusToApp()
 {
-    if (!Settings::window.handFocusToApp || Settings::window.focusOnSteamOverlay || Settings::window.windowMode ||
-        !steam_overlay_present_ || !fully_initialized_ || delayed_shutdown_) {
+    if (Settings::window.focusOnSteamOverlay || Settings::window.windowMode || !steam_overlay_present_ ||
+        !fully_initialized_ || delayed_shutdown_) {
         return;
     }
     if (focus_check_clock_.getElapsedTime().asMilliseconds() < 250) {
@@ -435,7 +427,7 @@ void SteamTarget::handFocusToApp()
     }
     focus_check_clock_.restart();
 
-    const HWND fg = realForegroundWindow();
+    const HWND fg = glossi::RealForegroundWindow();
     if (fg != nullptr && fg != target_window_handle_ && std::ranges::find(force_config_hwnds_, fg) != force_config_hwnds_.end()) {
         last_app_window_ = fg;
     }
@@ -494,7 +486,7 @@ void SteamTarget::onOverlayChanged(bool overlay_open)
     else {
         if (take_focus && !(overlay_.expired() ? false : overlay_.lock()->isEnabled())) {
 #ifdef _WIN32
-            const bool still_focused = realForegroundWindow() == target_window_handle_;
+            const bool still_focused = glossi::RealForegroundWindow() == target_window_handle_;
 #else
             const bool still_focused = true;
 #endif
@@ -530,6 +522,9 @@ void SteamTarget::toggleGlossiOverlay()
         return;
     }
     const auto ov_opened = overlay_.lock()->toggle();
+#ifdef _WIN32
+    window_state_dirty_ = true; // re-evaluate the frame-rate cap right away
+#endif
     window_.setClickThrough(!ov_opened);
     if (ov_opened) {
         spdlog::debug("Opened GlosSI-overlay");
@@ -554,14 +549,11 @@ void SteamTarget::focusWindow(WindowHandle hndl)
         spdlog::debug("Bring window \"{:#x}\" to foreground", reinterpret_cast<uint64_t>(hndl));
     }
 
-    keepControllerConfig(false); // unhook GetForegroundWindow
-    const auto current_fgw = GetForegroundWindow();
-    if (current_fgw != target_window_handle_) {
+    const auto current_fgw = glossi::RealForegroundWindow();
+    if (current_fgw != nullptr && current_fgw != target_window_handle_) {
         last_foreground_window_ = current_fgw;
     }
     const auto fg_thread = GetWindowThreadProcessId(current_fgw, nullptr);
-
-    keepControllerConfig(true); // re-hook GetForegroundWindow
 
     if (hndl != target_window_handle_) {
         // SetCapture below only ever succeeds for our own window, and nothing released it again.
@@ -726,25 +718,27 @@ HWND SteamTarget::keepFgWindowHookFn()
     if (!Settings::controller.allowDesktopConfig || !Settings::launch.launch) {
         return target_window_handle_;
     }
-    subhook::ScopedHookRemove remove(&getFgWinHook);
-    HWND real_fg_win = GetForegroundWindow();
+    // Called from whatever thread Steam's overlay uses, very often. No detour removal here (patching
+    // the function while another thread may be running it isn't safe), and the window list is
+    // rebuilt by the main thread, so read it under its lock.
+    const HWND real_fg_win = glossi::RealForegroundWindow();
     if (real_fg_win == nullptr) {
         return target_window_handle_;
     }
-    if (std::ranges::find_if(force_config_hwnds_, [real_fg_win](auto hwnd) {
-            return hwnd == real_fg_win;
-        }) != force_config_hwnds_.end()) {
-        if (last_real_hwnd_ != real_fg_win) {
-            last_real_hwnd_ = real_fg_win;
+    bool is_app_window = false;
+    {
+        std::scoped_lock lock(AppLauncher::process_hwnds_mutex);
+        is_app_window = std::ranges::find(force_config_hwnds_, real_fg_win) != force_config_hwnds_.end();
+    }
+    if (last_real_hwnd_.exchange(real_fg_win) != real_fg_win) {
+        if (is_app_window) {
             spdlog::debug("Active window (\"{:#x}\") in launched process window list, forcing specific config", reinterpret_cast<uint64_t>(real_fg_win));
         }
-        return target_window_handle_;
+        else {
+            spdlog::debug("Active window (\"{:#x}\") not in launched process window list, allowing desktop-config", reinterpret_cast<uint64_t>(real_fg_win));
+        }
     }
-    if (last_real_hwnd_ != real_fg_win) {
-        last_real_hwnd_ = real_fg_win;
-        spdlog::debug("Active window (\"{:#x}\") not in launched process window list, allowing desktop-config", reinterpret_cast<uint64_t>(real_fg_win));
-    }
-    return real_fg_win;
+    return is_app_window ? target_window_handle_ : real_fg_win;
 }
 #endif
 

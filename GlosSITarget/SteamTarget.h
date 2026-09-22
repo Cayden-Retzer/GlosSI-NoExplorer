@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 #pragma once
+#include <atomic>
 #include <cstdint>
 #define WIN32_LEAN_AND_MEAN
 
@@ -71,7 +72,7 @@ class SteamTarget {
     static HWND keepFgWindowHookFn();
     static inline subhook::Hook getFgWinHook;
     static inline std::vector<HWND> force_config_hwnds_ = {};
-    static inline HWND last_real_hwnd_ = nullptr;
+    static inline std::atomic<HWND> last_real_hwnd_{nullptr};
 #endif
 
 #ifdef _WIN32
